@@ -1,0 +1,42 @@
+{
+  "fetchTimeMs": 38.79999999329448,
+  "ipcPayloadSizeBytes": 440210,
+  "renderTimeMs": 156.69999999925494,
+  "totalLoadAndRenderTimeMs": 248.20000000298023,
+  "domNodeCount": 11629,
+  "jsHeapUsedMB": "4.31",
+  "searchLatencyMs": 24.300000000745058,
+  "searchResultsCount": 200,
+  "scrollFPS": "59.99",
+  "_meta": {
+    "ranAt": "2026-08-30T12:18:56.078Z",
+    "workspace": "PERF_TEST",
+    "workspaceId": 7,
+    "activeClipsInWorkspace": 10000,
+    "viewport": "760x640",
+    "searchQuery": "perf",
+    "scrollSampleMs": 2000,
+    "electron": "29.4.6",
+    "chrome": "122.0.6261.156",
+    "idleFPS": 62.38,
+    "fpsThrottled": false,
+    "scrollStepCostMs": 0.003,
+    "projectedMaxFPS": 60,
+    "clipsLoadedIntoUI": 500,
+    "clipsFetchedViaPaging": 500,
+    "pagesLoaded": 9,
+    "virtualizedCards": 0,
+    "liveCards": 500,
+    "firstPageFetchMs": 5.7,
+    "firstPagePayloadBytes": 43776,
+    "profile": null,
+    "ops": null,
+    "notes": [],
+    "pageErrors": [],
+    "comparability": [
+      "Search now runs through FTS5 with limit clamped to 200 (db.js searchClips).",
+      "The June baseline predates both, so searchLatencyMs/searchResultsCount are NOT",
+      "directly comparable to it. Render, DOM, heap and FPS numbers are."
+    ]
+  }
+}
