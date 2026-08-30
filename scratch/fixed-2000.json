@@ -1,0 +1,42 @@
+{
+  "fetchTimeMs": 496,
+  "ipcPayloadSizeBytes": 1467785,
+  "renderTimeMs": 1621.2000000001863,
+  "totalLoadAndRenderTimeMs": 32317.200000000186,
+  "domNodeCount": 49417,
+  "jsHeapUsedMB": "9.19",
+  "searchLatencyMs": 36,
+  "searchResultsCount": 200,
+  "scrollFPS": "22.18",
+  "_meta": {
+    "ranAt": "2026-08-30T08:08:12.764Z",
+    "workspace": "PERF_TEST",
+    "workspaceId": 7,
+    "activeClipsInWorkspace": 10000,
+    "viewport": "760x640",
+    "searchQuery": "perf",
+    "scrollSampleMs": 2000,
+    "electron": "29.4.6",
+    "chrome": "122.0.6261.156",
+    "idleFPS": 0.01,
+    "fpsThrottled": true,
+    "scrollStepCostMs": 0.247,
+    "projectedMaxFPS": 60,
+    "clipsLoadedIntoUI": 2000,
+    "clipsFetchedViaPaging": 2000,
+    "pagesLoaded": 39,
+    "virtualizedCards": 0,
+    "liveCards": 2000,
+    "firstPageFetchMs": 57.9,
+    "firstPagePayloadBytes": 43776,
+    "notes": [
+      "THROTTLED: idle baseline was only 0.01 FPS with zero work on the frame. The window was occluded or backgrounded, so scrollFPS is a measurement artifact, not a render cost. Trust scrollStepCostMs/projectedMaxFPS instead."
+    ],
+    "pageErrors": [],
+    "comparability": [
+      "Search now runs through FTS5 with limit clamped to 200 (db.js searchClips).",
+      "The June baseline predates both, so searchLatencyMs/searchResultsCount are NOT",
+      "directly comparable to it. Render, DOM, heap and FPS numbers are."
+    ]
+  }
+}
