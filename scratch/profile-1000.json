@@ -1,0 +1,80 @@
+{
+  "fetchTimeMs": 106.3999999994412,
+  "ipcPayloadSizeBytes": 880970,
+  "renderTimeMs": 664.2999999998137,
+  "totalLoadAndRenderTimeMs": 9457.799999999814,
+  "domNodeCount": 23405,
+  "jsHeapUsedMB": "5.65",
+  "searchLatencyMs": 94.6999999997206,
+  "searchResultsCount": 200,
+  "scrollFPS": "43.96",
+  "_meta": {
+    "ranAt": "2026-08-30T08:10:19.433Z",
+    "workspace": "PERF_TEST",
+    "workspaceId": 7,
+    "activeClipsInWorkspace": 10000,
+    "viewport": "760x640",
+    "searchQuery": "perf",
+    "scrollSampleMs": 2000,
+    "electron": "29.4.6",
+    "chrome": "122.0.6261.156",
+    "idleFPS": 0.05,
+    "fpsThrottled": true,
+    "scrollStepCostMs": 0.112,
+    "projectedMaxFPS": 60,
+    "clipsLoadedIntoUI": 1000,
+    "clipsFetchedViaPaging": 1000,
+    "pagesLoaded": 19,
+    "virtualizedCards": 0,
+    "liveCards": 1000,
+    "firstPageFetchMs": 13.4,
+    "firstPagePayloadBytes": 43776,
+    "profile": {
+      "appendCardsToCanvas": {
+        "calls": 19,
+        "ms": 511.19999999925494
+      },
+      "appendItemsToTimeline": {
+        "calls": 19,
+        "ms": 97.3000000002794
+      },
+      "distributeCards": {
+        "calls": 20,
+        "ms": 433.60000000102445
+      },
+      "buildCardHTML": {
+        "calls": 1950,
+        "ms": 243.59999999497086
+      },
+      "bindCardEvents": {
+        "calls": 1972,
+        "ms": 61.79999999888241
+      },
+      "updateMinimap": {
+        "calls": 107,
+        "ms": 1053.1000000024214
+      },
+      "updateLoadMoreIndicator": {
+        "calls": 38,
+        "ms": 0.8999999999068677
+      },
+      "updateCount": {
+        "calls": 19,
+        "ms": 0.9000000008381903
+      },
+      "renderCanvas": {
+        "calls": 1,
+        "ms": 504.29999999981374
+      }
+    },
+    "notes": [
+      "THROTTLED: idle baseline was only 0.05 FPS with zero work on the frame. The window was occluded or backgrounded, so scrollFPS is a measurement artifact, not a render cost. Trust scrollStepCostMs/projectedMaxFPS instead."
+    ],
+    "pageErrors": [],
+    "comparability": [
+      "Search now runs through FTS5 with limit clamped to 200 (db.js searchClips).",
+      "The June baseline predates both, so searchLatencyMs/searchResultsCount are NOT",
+      "directly comparable to it. Render, DOM, heap and FPS numbers are."
+    ]
+  }
+}
