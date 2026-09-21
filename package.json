@@ -18,5 +18,17 @@
     "electron": "^29.4.6",
     "electron-builder": "^24.9.1"
   },
+  "build": {
+    "appId": "com.clipcanvas.app",
+    "productName": "ClipCanvas",
+    "win": {
+      "target": "nsis",
+      "icon": "src/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
   "license": "UNLICENSED"
 }
