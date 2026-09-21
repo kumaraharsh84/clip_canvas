@@ -62,6 +62,7 @@ function start() {
 
   registerAssetProtocol();
   createWindow();
+  createTray();
 
   app.on("activate", () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
 }
@@ -131,6 +132,42 @@ function createWindow() {
   });
 
   if (IS_DEV) win.webContents.openDevTools({ mode: "detach" });
+}
+
+function createTray() {
+  tray = new Tray(trayIcon());
+  tray.setToolTip("ClipCanvas");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Open ClipCanvas", click: showPanel },
+    { type: "separator" },
+    { label: "Open storage folder", click: () => shell.openPath(storageDir) },
+    { type: "separator" },
+    { label: "Quit", click: () => { app.isQuitting = true; app.quit(); } },
+  ]));
+  tray.on("click", togglePanel);
+}
+
+/**
+ * The packaged build references src/assets/icon.ico, which did not survive.
+ * Rather than fail to create a tray at all -- which would leave the app with no
+ * way to be opened, since the window starts hidden -- draw a placeholder.
+ */
+function trayIcon() {
+  const icoPath = path.join(__dirname, "..", "assets", "icon.ico");
+  if (fs.existsSync(icoPath)) return nativeImage.createFromPath(icoPath);
+
+  const pngPath = path.join(__dirname, "..", "assets", "icon.png");
+  if (fs.existsSync(pngPath)) return nativeImage.createFromPath(pngPath);
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+    <rect width="32" height="32" rx="7" fill="#16222e"/>
+    <rect x="7" y="6" width="18" height="6" rx="2" fill="#6fa8dc"/>
+    <rect x="7" y="14" width="13" height="4" rx="1.5" fill="#7fd1b9"/>
+    <rect x="7" y="21" width="18" height="4" rx="1.5" fill="#b48ead"/>
+  </svg>`;
+  return nativeImage.createFromDataURL(
+    "data:image/svg+xml;base64," + Buffer.from(svg).toString("base64")
+  );
 }
 
 function showPanel() {
