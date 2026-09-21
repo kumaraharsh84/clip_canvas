@@ -64,6 +64,8 @@ function start() {
   createWindow();
   createTray();
 
+  globalShortcut.register("CommandOrControl+Shift+V", togglePanel);
+
   app.on("activate", () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
 }
 
@@ -73,6 +75,7 @@ app.on("window-all-closed", (e) => {
 });
 
 app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
   if (pollTimer) clearInterval(pollTimer);
   if (db) db.close();
 });
