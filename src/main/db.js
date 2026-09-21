@@ -311,6 +311,105 @@ class ClipDatabase {
     const row = this.db.prepare("SELECT id, type, content FROM clips WHERE id = ?").get(id);
     return row || null;
   }
+
+  // ── Writing clips ──────────────────────────────────────────────────────────
+  addClip(clip) {
+    const now = Math.floor(Date.now() / 1000);
+    const d = new Date(now * 1000);
+
+    const info = this.db.prepare(`
+      INSERT INTO clips (
+        type, content, title, file_size_bytes, source, tags,
+        workspace_id, board_id, storage_mode, asset_path, asset_hash,
+        thumbnail_path, original_path, mime_type,
+        created_at, updated_at, year, month, day, weekday, hour
+      ) VALUES (
+        @type, @content, @title, @file_size_bytes, @source, @tags,
+        @workspace_id, @board_id, @storage_mode, @asset_path, @asset_hash,
+        @thumbnail_path, @original_path, @mime_type,
+        @created_at, @updated_at, @year, @month, @day, @weekday, @hour
+      )
+    `).run({
+      type: clip.type,
+      content: clip.content ?? null,
+      title: clip.title ?? null,
+      file_size_bytes: clip.file_size_bytes ?? (clip.content ? Buffer.byteLength(clip.content) : 0),
+      source: clip.source ?? "clipboard",
+      tags: JSON.stringify(clip.tags ?? autoTags(clip)),
+      workspace_id: clip.workspace_id ?? null,
+      board_id: clip.board_id ?? null,
+      storage_mode: clip.storage_mode ?? "inline",
+      asset_path: clip.asset_path ?? null,
+      asset_hash: clip.asset_hash ?? null,
+      thumbnail_path: clip.thumbnail_path ?? null,
+      original_path: clip.original_path ?? null,
+      mime_type: clip.mime_type ?? null,
+      created_at: now,
+      updated_at: now,
+      year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(),
+      weekday: d.getDay(), hour: d.getHours(),
+    });
+
+    return this.getClipById(info.lastInsertRowid);
+  }
+
+  /** Has this exact content already been captured recently? */
+  findRecentDuplicate(workspaceId, type, content, withinSeconds = 3) {
+    if (content == null) return null;
+    return this.db.prepare(`
+      SELECT id FROM clips
+       WHERE workspace_id IS ? AND type = ? AND content = ?
+         AND created_at >= strftime('%s','now') - ?
+       LIMIT 1
+    `).get(workspaceId ?? null, type, content, withinSeconds);
+  }
+
+  updateClip(id, patch = {}) {
+    const allowed = ["title", "tags", "workspace_id", "board_id",
+                     "is_starred", "is_archived", "is_pinned",
+                     "canvas_x", "canvas_y", "pos_x", "pos_y", "is_free_position"];
+    const sets = [];
+    const params = [];
+    for (const key of allowed) {
+      if (patch[key] === undefined) continue;
+      sets.push(`${key} = ?`);
+      params.push(key === "tags" && typeof patch[key] !== "string"
+        ? JSON.stringify(patch[key]) : patch[key]);
+    }
+    if (!sets.length) return this.getClipById(id);
+    sets.push("updated_at = strftime('%s','now')");
+    this.db.prepare(`UPDATE clips SET ${sets.join(", ")} WHERE id = ?`).run(...params, id);
+    return this.getClipById(id);
+  }
+
+  /** Archive never touches a starred clip -- stated behaviour in the README. */
+  archiveClips(ids) {
+    const stmt = this.db.prepare(
+      "UPDATE clips SET is_archived = 1, updated_at = strftime('%s','now') WHERE id = ? AND is_starred = 0"
+    );
+    let n = 0;
+    this.db.transaction(() => { for (const id of ids) n += stmt.run(id).changes; })();
+    return { archived: n };
+  }
+
+  /** Soft delete -> Trash. */
+  deleteClips(ids) {
+    const stmt = this.db.prepare(
+      "UPDATE clips SET deleted_at = strftime('%s','now') WHERE id = ? AND deleted_at IS NULL"
+    );
+    let n = 0;
+    this.db.transaction(() => { for (const id of ids) n += stmt.run(id).changes; })();
+    return { deleted: n };
+  }
+
+  restoreClips(ids) {
+    const stmt = this.db.prepare(
+      "UPDATE clips SET deleted_at = NULL, updated_at = strftime('%s','now') WHERE id = ?"
+    );
+    let n = 0;
+    this.db.transaction(() => { for (const id of ids) n += stmt.run(id).changes; })();
+    return { restored: n };
+  }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -322,6 +421,14 @@ function hydrate(row) {
     try { tags = JSON.parse(row.tags); } catch (_) { tags = []; }
   }
   return { ...row, tags: Array.isArray(tags) ? tags : [] };
+}
+
+function autoTags(clip) {
+  const tags = [clip.type];
+  if (clip.type === "url" && clip.content) {
+    try { tags.push(new URL(clip.content).hostname.replace(/^www\./, "")); } catch (_) {}
+  }
+  return tags;
 }
 
 module.exports = { ClipDatabase, SCHEMA_VERSION };
