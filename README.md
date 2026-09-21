@@ -309,6 +309,33 @@ npx electron-builder install-app-deps
 
 If it still builds from source and fails, install Visual Studio Build Tools with the Desktop development with C++ workload and a Windows SDK, then retry.
 
+### Build fails: `Cannot create symbolic link ... libcrypto.dylib`
+
+`npm run build` downloads electron-builder's `winCodeSign` bundle and extracts
+it with 7-Zip. That archive contains **macOS** symlinks, and creating a symlink
+on Windows needs either administrator rights or Developer Mode — so extraction
+fails, and the build dies during `packaging`, before NSIS ever runs:
+
+```text
+ERROR: Cannot create symbolic link : A required privilege is not held by the
+client. : ...\winCodeSign\<id>\darwin.12\lib\libcrypto.dylib
+```
+
+Nothing in a Windows build needs those `darwin/` files. The fix is to extract
+the archive yourself without them, into the exact directory electron-builder
+looks for — `winCodeSign-2.6.0`, **not** `winCodeSign`. It will then skip the
+download entirely:
+
+```bash
+CACHE="$LOCALAPPDATA/electron-builder/Cache/winCodeSign"
+./node_modules/7zip-bin/win/x64/7za.exe x -y "$CACHE"/*.7z   -o"$CACHE/winCodeSign-2.6.0" '-xr!darwin'
+rm -rf "$CACHE"/[0-9]*          # failed attempts leave numbered temp dirs
+```
+
+The permanent alternative is to turn on **Settings → System → For developers →
+Developer Mode**, which grants symlink privilege to non-admin users; then the
+normal download path works.
+
 ### Panel does not appear
 
 The app starts as a tray utility. Press `Ctrl+Shift+V`, or open it from the ClipCanvas icon in the Windows system tray.
