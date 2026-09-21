@@ -171,6 +171,56 @@ class ClipDatabase {
       void personal;
     })();
   }
+
+  // ── Workspaces ─────────────────────────────────────────────────────────────
+  listWorkspaces() {
+    return this.db.prepare(`
+      SELECT w.*,
+             (SELECT COUNT(*) FROM clips c
+               WHERE c.workspace_id = w.id AND c.deleted_at IS NULL) AS clip_count
+        FROM workspaces w
+       ORDER BY w.is_default DESC, w.name COLLATE NOCASE ASC
+    `).all();
+  }
+
+  createWorkspace(name) {
+    const slug = String(name).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const info = this.db
+      .prepare("INSERT INTO workspaces (name, slug) VALUES (?, ?)")
+      .run(String(name).trim(), slug || "ws-" + Date.now());
+    return this.db.prepare("SELECT * FROM workspaces WHERE id = ?").get(info.lastInsertRowid);
+  }
+
+  // ── Boards ─────────────────────────────────────────────────────────────────
+  listBoards(workspaceId) {
+    return this.db.prepare(`
+      SELECT b.*,
+             (SELECT COUNT(*) FROM clips c
+               WHERE c.board_id = b.id AND c.deleted_at IS NULL) AS clip_count
+        FROM boards b
+       WHERE b.workspace_id = ?
+       ORDER BY b.name COLLATE NOCASE ASC
+    `).all(workspaceId);
+  }
+
+  createBoard(workspaceId, name) {
+    const info = this.db
+      .prepare("INSERT INTO boards (workspace_id, name) VALUES (?, ?)")
+      .run(workspaceId, String(name).trim());
+    return this.db.prepare("SELECT * FROM boards WHERE id = ?").get(info.lastInsertRowid);
+  }
+
+  renameBoard(id, name) {
+    this.db.prepare("UPDATE boards SET name = ?, updated_at = strftime('%s','now') WHERE id = ?")
+      .run(String(name).trim(), id);
+    return this.db.prepare("SELECT * FROM boards WHERE id = ?").get(id);
+  }
+
+  deleteBoard(id) {
+    // ON DELETE SET NULL on clips.board_id returns those clips to the workspace.
+    this.db.prepare("DELETE FROM boards WHERE id = ?").run(id);
+    return { ok: true };
+  }
 }
 
 module.exports = { ClipDatabase, SCHEMA_VERSION };
