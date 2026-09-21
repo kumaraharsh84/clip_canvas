@@ -26,6 +26,7 @@ const fs = require("fs");
 const Database = require("better-sqlite3");
 
 const SCHEMA_VERSION = 5;
+const SEARCH_LIMIT_MAX = 200; // matches the clamp the old searchClips applied
 
 class ClipDatabase {
   /**
@@ -146,9 +147,57 @@ class ClipDatabase {
         ON clips(workspace_id, deleted_at, is_archived, year, month, day, hour);
     `);
 
+    this.migrateFts();
+
     const have = db.prepare("SELECT version FROM schema_version WHERE version = ?");
     const mark = db.prepare("INSERT OR IGNORE INTO schema_version (version) VALUES (?)");
     for (let v = 1; v <= SCHEMA_VERSION; v++) if (!have.get(v)) mark.run(v);
+  }
+
+  /**
+   * fts5 with content='clips' keeps no copy of the text: it indexes the base
+   * table by rowid and the triggers keep it in step. Image clips are indexed
+   * with an empty body so base64 payloads never enter the index.
+   */
+  migrateFts() {
+    const db = this.db;
+    const exists = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='clips_fts'")
+      .get();
+    if (exists) return;
+
+    db.exec(`
+      CREATE VIRTUAL TABLE clips_fts USING fts5(
+        title, content, tags, source,
+        content='clips', content_rowid='id'
+      );
+
+      CREATE TRIGGER clips_ai AFTER INSERT ON clips BEGIN
+        INSERT INTO clips_fts(rowid, title, content, tags, source)
+        VALUES (new.id, new.title,
+                CASE WHEN new.type = 'image' THEN '' ELSE new.content END,
+                new.tags, new.source);
+      END;
+
+      CREATE TRIGGER clips_ad AFTER DELETE ON clips BEGIN
+        INSERT INTO clips_fts(clips_fts, rowid, title, content, tags, source)
+        VALUES ('delete', old.id, old.title,
+                CASE WHEN old.type = 'image' THEN '' ELSE old.content END,
+                old.tags, old.source);
+      END;
+
+      CREATE TRIGGER clips_au AFTER UPDATE ON clips BEGIN
+        INSERT INTO clips_fts(clips_fts, rowid, title, content, tags, source)
+        VALUES ('delete', old.id, old.title,
+                CASE WHEN old.type = 'image' THEN '' ELSE old.content END,
+                old.tags, old.source);
+        INSERT INTO clips_fts(rowid, title, content, tags, source)
+        VALUES (new.id, new.title,
+                CASE WHEN new.type = 'image' THEN '' ELSE new.content END,
+                new.tags, new.source);
+      END;
+    `);
+    db.exec("INSERT INTO clips_fts(clips_fts) VALUES('rebuild')");
   }
 
   seed() {
@@ -312,6 +361,48 @@ class ClipDatabase {
     return row || null;
   }
 
+  // ── Search ─────────────────────────────────────────────────────────────────
+  /**
+   * FTS5 search. The limit is clamped to 200, which benchmark-renderer.js notes
+   * as the behaviour the June baseline predates -- keep it, the renderer's
+   * result list is built around it.
+   */
+  searchClips(opts = {}) {
+    const raw = String(opts.query || opts.q || "").trim();
+    if (!raw) return [];
+    const limit = Math.min(Number(opts.limit) || SEARCH_LIMIT_MAX, SEARCH_LIMIT_MAX);
+
+    const where = ["c.deleted_at IS NULL"];
+    const params = [];
+    if (opts.workspaceId) { where.push("c.workspace_id = ?"); params.push(opts.workspaceId); }
+    if (opts.boardId) { where.push("c.board_id = ?"); params.push(opts.boardId); }
+    if (!opts.includeArchived) where.push("c.is_archived = 0");
+
+    try {
+      return this.db.prepare(`
+        SELECT c.*, bm25(clips_fts) AS rank
+          FROM clips_fts
+          JOIN clips c ON c.id = clips_fts.rowid
+         WHERE clips_fts MATCH ?
+           AND ${where.join(" AND ")}
+         ORDER BY rank
+         LIMIT ?
+      `).all(ftsQuery(raw), ...params, limit).map(hydrate);
+    } catch (err) {
+      // A bare LIKE fallback, because fts5 MATCH throws on malformed queries
+      // (an unbalanced quote, a lone NEAR) and a search box should never be
+      // able to crash the app by what someone typed into it.
+      const like = "%" + raw.replace(/[%_]/g, "") + "%";
+      return this.db.prepare(`
+        SELECT c.* FROM clips c
+         WHERE ${where.join(" AND ")}
+           AND (c.content LIKE ? OR c.title LIKE ? OR c.tags LIKE ?)
+         ORDER BY c.created_at DESC
+         LIMIT ?
+      `).all(...params, like, like, like, limit).map(hydrate);
+    }
+  }
+
   // ── Writing clips ──────────────────────────────────────────────────────────
   addClip(clip) {
     const now = Math.floor(Date.now() / 1000);
@@ -423,6 +514,19 @@ function hydrate(row) {
   return { ...row, tags: Array.isArray(tags) ? tags : [] };
 }
 
+/**
+ * Turn user input into a safe fts5 query. Bare punctuation is a syntax error in
+ * MATCH, so each word is quoted and the last one gets a prefix `*` so search
+ * feels live as you type.
+ */
+function ftsQuery(raw) {
+  const words = raw.split(/\s+/).filter(Boolean).map((w) => w.replace(/"/g, ""));
+  if (!words.length) return '""';
+  return words
+    .map((w, i) => (i === words.length - 1 ? `"${w}"*` : `"${w}"`))
+    .join(" AND ");
+}
+
 function autoTags(clip) {
   const tags = [clip.type];
   if (clip.type === "url" && clip.content) {
@@ -431,4 +535,4 @@ function autoTags(clip) {
   return tags;
 }
 
-module.exports = { ClipDatabase, SCHEMA_VERSION };
+module.exports = { ClipDatabase, SCHEMA_VERSION, ftsQuery };
