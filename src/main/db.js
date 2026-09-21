@@ -221,6 +221,107 @@ class ClipDatabase {
     this.db.prepare("DELETE FROM boards WHERE id = ?").run(id);
     return { ok: true };
   }
+
+  // ── Reading clips ──────────────────────────────────────────────────────────
+  /**
+   * Shared WHERE builder. `filter` is one of:
+   *   active (default) | starred | pinned | archived | trash | all
+   */
+  clipWhere(opts = {}) {
+    const where = [];
+    const params = [];
+
+    if (opts.workspaceId) { where.push("c.workspace_id = ?"); params.push(opts.workspaceId); }
+    if (opts.boardId) { where.push("c.board_id = ?"); params.push(opts.boardId); }
+    if (opts.type) { where.push("c.type = ?"); params.push(opts.type); }
+
+    switch (opts.filter || "active") {
+      case "trash": where.push("c.deleted_at IS NOT NULL"); break;
+      case "starred": where.push("c.deleted_at IS NULL AND c.is_starred = 1"); break;
+      case "pinned": where.push("c.deleted_at IS NULL AND c.is_pinned = 1"); break;
+      case "archived": where.push("c.deleted_at IS NULL AND c.is_archived = 1"); break;
+      case "all": where.push("c.deleted_at IS NULL"); break;
+      default: where.push("c.deleted_at IS NULL AND c.is_archived = 0"); break;
+    }
+    return { sql: where.length ? "WHERE " + where.join(" AND ") : "", params };
+  }
+
+  /** Newest-first page. `limit`/`offset`, or `beforeId` for keyset paging. */
+  getClipPage(opts = {}) {
+    const limit = Math.min(Math.max(Number(opts.limit) || 200, 1), 5000);
+    const offset = Math.max(Number(opts.offset) || 0, 0);
+    const { sql, params } = this.clipWhere(opts);
+
+    const rows = this.db.prepare(`
+      SELECT c.* FROM clips c ${sql}
+      ORDER BY c.is_pinned DESC, c.created_at DESC, c.id DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+
+    const total = this.db
+      .prepare(`SELECT COUNT(*) n FROM clips c ${sql}`)
+      .get(...params).n;
+
+    return { clips: rows.map(hydrate), total, limit, offset,
+             hasMore: offset + rows.length < total };
+  }
+
+  /** Every matching clip. Bounded by `max` so a runaway call cannot OOM. */
+  getClips(opts = {}) {
+    const max = Math.min(Number(opts.max) || 20000, 100000);
+    const { sql, params } = this.clipWhere(opts);
+    return this.db.prepare(`
+      SELECT c.* FROM clips c ${sql}
+      ORDER BY c.created_at ASC, c.id ASC
+      LIMIT ?
+    `).all(...params, max).map(hydrate);
+  }
+
+  /**
+   * Metadata only -- no `content`. This is what the Time Canvas loads: it needs
+   * every clip's timestamp and size to lay the canvas out, but the body text is
+   * only needed for clips you actually zoom into, and pulling 5 MB of bodies
+   * through IPC to render a treemap is most of what made the old load take 59s.
+   */
+  getClipSummaries(opts = {}) {
+    const max = Math.min(Number(opts.max) || 50000, 200000);
+    const { sql, params } = this.clipWhere(opts);
+    return this.db.prepare(`
+      SELECT c.id, c.type, c.title, c.source, c.tags, c.workspace_id, c.board_id,
+             c.is_starred, c.is_archived, c.is_pinned, c.deleted_at,
+             c.created_at, c.updated_at, c.file_size_bytes,
+             c.storage_mode, c.asset_path, c.thumbnail_path, c.mime_type,
+             c.year, c.month, c.day, c.hour,
+             LENGTH(c.content) AS content_length,
+             CASE WHEN c.type = 'image' THEN NULL
+                  ELSE substr(c.content, 1, 4000) END AS content
+        FROM clips c ${sql}
+       ORDER BY c.created_at ASC, c.id ASC
+       LIMIT ?
+    `).all(...params, max).map(hydrate);
+  }
+
+  getClipById(id) {
+    const row = this.db.prepare("SELECT * FROM clips WHERE id = ?").get(id);
+    return row ? hydrate(row) : null;
+  }
+
+  /** Full body for one clip -- used when a card is zoomed into or opened. */
+  getClipContent(id) {
+    const row = this.db.prepare("SELECT id, type, content FROM clips WHERE id = ?").get(id);
+    return row || null;
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+/** Rows come back with tags as a JSON string; give the renderer an array. */
+function hydrate(row) {
+  if (!row) return row;
+  let tags = [];
+  if (row.tags) {
+    try { tags = JSON.parse(row.tags); } catch (_) { tags = []; }
+  }
+  return { ...row, tags: Array.isArray(tags) ? tags : [] };
 }
 
 module.exports = { ClipDatabase, SCHEMA_VERSION };
