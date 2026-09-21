@@ -21,10 +21,12 @@ const {
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 
 const { ClipDatabase } = require("./db");
 
 const IS_DEV = process.argv.includes("--dev");
+const POLL_MS = 700;
 const ASSET_SCHEME = "clip-asset";
 
 let win = null;
@@ -33,6 +35,10 @@ let db = null;
 let storageDir = null;
 let pollTimer = null;
 let activeWorkspaceId = null;
+
+// Last seen clipboard state, so a poll that finds nothing new does nothing.
+let lastText = null;
+let lastImageHash = null;
 
 // A custom scheme must be registered as privileged BEFORE app ready.
 protocol.registerSchemesAsPrivileged([
@@ -65,6 +71,7 @@ function start() {
   createTray();
 
   globalShortcut.register("CommandOrControl+Shift+V", togglePanel);
+  startClipboardWatcher();
 
   app.on("activate", () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
 }
@@ -186,7 +193,111 @@ function togglePanel() {
   else showPanel();
 }
 
+// ── Clipboard watcher ────────────────────────────────────────────────────────
+function startClipboardWatcher() {
+  // Prime from the current clipboard so whatever is already on it at launch is
+  // not captured as if it were just copied.
+  lastText = clipboard.readText() || null;
+  const img = clipboard.readImage();
+  lastImageHash = img.isEmpty() ? null : hashBuffer(img.toPNG());
+
+  pollTimer = setInterval(pollClipboard, POLL_MS);
+}
+
+function pollClipboard() {
+  try {
+    // Images first: copying an image often leaves a text representation too
+    // (a filename, or HTML), and capturing that instead loses the picture.
+    const img = clipboard.readImage();
+    if (!img.isEmpty()) {
+      const png = img.toPNG();
+      const hash = hashBuffer(png);
+      if (hash !== lastImageHash) {
+        lastImageHash = hash;
+        lastText = clipboard.readText() || lastText;
+        captureImage(png, hash, img.getSize());
+      }
+      return;
+    }
+
+    const text = clipboard.readText();
+    if (text && text !== lastText) {
+      lastText = text;
+      lastImageHash = null;
+      captureText(text);
+    }
+  } catch (err) {
+    console.error("[clipcanvas] clipboard poll failed:", err.message);
+  }
+}
+
+function captureText(text) {
+  if (db.findRecentDuplicate(activeWorkspaceId, classify(text), text)) return;
+  const clip = db.addClip({
+    type: classify(text),
+    content: text,
+    workspace_id: activeWorkspaceId,
+    source: "clipboard",
+    file_size_bytes: Buffer.byteLength(text, "utf8"),
+    storage_mode: "inline",
+  });
+  broadcast("clip:added", clip);
+}
+
+function captureImage(png, hash, size) {
+  const now = new Date();
+  const rel = path.join(
+    "images",
+    String(now.getFullYear()),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    `img-${crypto.randomUUID()}.png`
+  ).replace(/\\/g, "/");
+
+  const full = path.join(storageDir, rel);
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, png);
+
+  const clip = db.addClip({
+    type: "image",
+    content: null,
+    workspace_id: activeWorkspaceId,
+    source: "clipboard",
+    storage_mode: "local",
+    asset_path: rel,
+    asset_hash: hash,
+    mime_type: "image/png",
+    file_size_bytes: png.length,
+    title: `Image ${size.width}x${size.height}`,
+  });
+  broadcast("clip:added", clip);
+}
+
+/** text | code | url -- the same three the canvas colours by. */
+function classify(text) {
+  const t = text.trim();
+  if (/^https?:\/\/\S+$/i.test(t)) return "url";
+
+  const codey = [
+    /[{};]\s*$/m, /^\s*(function|class|const|let|var|import|export|def|public|private)\b/m,
+    /^\s*(if|for|while|switch|return)\s*\(/m, /=>/, /^\s*<\/?[a-z][\w-]*[\s>]/im,
+    /^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE)\s/im,
+  ].reduce((n, re) => n + (re.test(t) ? 1 : 0), 0);
+
+  const lines = t.split("\n");
+  const indented = lines.filter((l) => /^\s{2,}|\t/.test(l)).length;
+  if (codey >= 2 || (codey >= 1 && indented >= 2)) return "code";
+  return "text";
+}
+
+function broadcast(channel, payload) {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send(channel, payload);
+  }
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
+function hashBuffer(buf) { return crypto.createHash("sha1").update(buf).digest("hex"); }
+
 function mimeFor(file) {
   switch (path.extname(file).toLowerCase()) {
     case ".png": return "image/png";
@@ -196,3 +307,5 @@ function mimeFor(file) {
     default: return "application/octet-stream";
   }
 }
+
+module.exports = { classify };
