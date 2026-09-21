@@ -589,6 +589,77 @@ class ClipDatabase {
     this.db.transaction(() => { for (const id of ids) n += stmt.run(id).changes; })();
     return { restored: n };
   }
+
+  getTrashSummary({ workspaceId } = {}) {
+    const where = "WHERE deleted_at IS NOT NULL" + (workspaceId ? " AND workspace_id = ?" : "");
+    const params = workspaceId ? [workspaceId] : [];
+    const row = this.db.prepare(
+      `SELECT COUNT(*) AS count, COALESCE(SUM(file_size_bytes),0) AS bytes,
+              MIN(deleted_at) AS oldest FROM clips ${where}`
+    ).get(...params);
+    return { count: row.count, bytes: row.bytes, oldest: row.oldest };
+  }
+
+  /**
+   * Permanently remove trashed rows, deleting their assets first. Asset removal
+   * is best-effort: a missing or locked file must not leave the row behind,
+   * because a row whose asset is gone is worse than an orphan file.
+   */
+  emptyTrash({ workspaceId } = {}) {
+    const where = "WHERE deleted_at IS NOT NULL" + (workspaceId ? " AND workspace_id = ?" : "");
+    const params = workspaceId ? [workspaceId] : [];
+    const rows = this.db.prepare(
+      `SELECT id, asset_path, thumbnail_path FROM clips ${where}`
+    ).all(...params);
+
+    let filesRemoved = 0;
+    for (const r of rows) {
+      for (const rel of [r.asset_path, r.thumbnail_path]) {
+        if (!rel) continue;
+        try { fs.unlinkSync(path.join(this.storageDir, rel)); filesRemoved++; } catch (_) {}
+      }
+    }
+    const info = this.db.prepare(`DELETE FROM clips ${where}`).run(...params);
+    return { removed: info.changes, filesRemoved };
+  }
+
+  // ── Storage dashboard ──────────────────────────────────────────────────────
+  getStorageStats({ workspaceId } = {}) {
+    const where = "WHERE deleted_at IS NULL" + (workspaceId ? " AND workspace_id = ?" : "");
+    const params = workspaceId ? [workspaceId] : [];
+
+    const byType = this.db.prepare(`
+      SELECT type, COUNT(*) AS count,
+             COALESCE(SUM(file_size_bytes),0) AS bytes,
+             COALESCE(SUM(LENGTH(content)),0) AS text_bytes
+        FROM clips ${where} GROUP BY type ORDER BY bytes DESC
+    `).all(...params);
+
+    const totals = this.db.prepare(`
+      SELECT COUNT(*) AS count,
+             COALESCE(SUM(file_size_bytes),0) AS bytes,
+             COALESCE(SUM(LENGTH(content)),0) AS text_bytes
+        FROM clips ${where}
+    `).get(...params);
+
+    const largest = this.db.prepare(`
+      SELECT id, type, title, file_size_bytes, LENGTH(content) AS content_length, created_at
+        FROM clips ${where}
+       ORDER BY MAX(file_size_bytes, COALESCE(LENGTH(content),0)) DESC LIMIT 10
+    `).all(...params);
+
+    const oldest = this.db.prepare(`
+      SELECT id, type, title, created_at FROM clips ${where}
+       ORDER BY created_at ASC LIMIT 10
+    `).all(...params);
+
+    return {
+      totals: { ...totals, total_bytes: totals.bytes + totals.text_bytes },
+      byType, largest, oldest,
+      storageDir: this.storageDir,
+      dbBytes: safeSize(this.dbPath),
+    };
+  }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -626,6 +697,10 @@ function autoTags(clip) {
 function toSeconds(v) {
   const n = Number(v) || 0;
   return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
+}
+
+function safeSize(p) {
+  try { return fs.statSync(p).size; } catch (_) { return 0; }
 }
 
 module.exports = { ClipDatabase, SCHEMA_VERSION, ftsQuery, toSeconds };
