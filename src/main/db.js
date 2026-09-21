@@ -403,6 +403,94 @@ class ClipDatabase {
     }
   }
 
+  // ── Time hierarchy (Time Canvas) ───────────────────────────────────────────
+  timeBase(workspaceId) {
+    return {
+      sql: "WHERE deleted_at IS NULL AND is_archived = 0" +
+           (workspaceId ? " AND workspace_id = ?" : ""),
+      params: workspaceId ? [workspaceId] : [],
+    };
+  }
+
+  getYears(workspaceId) {
+    const b = this.timeBase(workspaceId);
+    return this.db.prepare(
+      `SELECT year, COUNT(*) AS count FROM clips ${b.sql} AND year IS NOT NULL
+       GROUP BY year ORDER BY year ASC`
+    ).all(...b.params);
+  }
+
+  getMonths(year, workspaceId) {
+    const b = this.timeBase(workspaceId);
+    return this.db.prepare(
+      `SELECT month, COUNT(*) AS count FROM clips ${b.sql} AND year = ?
+       GROUP BY month ORDER BY month ASC`
+    ).all(...b.params, year);
+  }
+
+  getDays(year, month, workspaceId) {
+    const b = this.timeBase(workspaceId);
+    return this.db.prepare(
+      `SELECT day, COUNT(*) AS count FROM clips ${b.sql} AND year = ? AND month = ?
+       GROUP BY day ORDER BY day ASC`
+    ).all(...b.params, year, month);
+  }
+
+  getHours(year, month, day, workspaceId) {
+    const b = this.timeBase(workspaceId);
+    return this.db.prepare(
+      `SELECT hour, COUNT(*) AS count FROM clips ${b.sql}
+         AND year = ? AND month = ? AND day = ?
+       GROUP BY hour ORDER BY hour ASC`
+    ).all(...b.params, year, month, day);
+  }
+
+  /** `startTimestamp`/`endTimestamp` are Unix SECONDS, matching created_at. */
+  getClipsInTimeRange(startTimestamp, endTimestamp, workspaceId) {
+    const b = this.timeBase(workspaceId);
+    return this.db.prepare(
+      `SELECT * FROM clips ${b.sql} AND created_at >= ? AND created_at < ?
+       ORDER BY created_at ASC, id ASC`
+    ).all(...b.params, toSeconds(startTimestamp), toSeconds(endTimestamp)).map(hydrate);
+  }
+
+  /** Split a range into working sessions separated by a gap of idle minutes. */
+  getSessions(startTimestamp, endTimestamp, workspaceId, gapMinutes = 30) {
+    const clips = this.getClipsInTimeRange(startTimestamp, endTimestamp, workspaceId);
+    const gap = Math.max(1, Number(gapMinutes) || 30) * 60;
+    const sessions = [];
+    let cur = null;
+
+    for (const c of clips) {
+      if (!cur || c.created_at - cur.end > gap) {
+        cur = { start: c.created_at, end: c.created_at, count: 0, clips: [] };
+        sessions.push(cur);
+      }
+      cur.end = c.created_at;
+      cur.count++;
+      cur.clips.push(c.id);
+    }
+    return sessions;
+  }
+
+  /**
+   * Fill year/month/day/weekday/hour for rows where they are NULL.
+   * SQLite's strftime is used rather than JS so the whole thing is one
+   * statement; '%s' values are seconds, hence the 'unixepoch' modifier.
+   */
+  backfillTimeColumns() {
+    const info = this.db.prepare(`
+      UPDATE clips SET
+        year    = CAST(strftime('%Y', created_at, 'unixepoch', 'localtime') AS INTEGER),
+        month   = CAST(strftime('%m', created_at, 'unixepoch', 'localtime') AS INTEGER),
+        day     = CAST(strftime('%d', created_at, 'unixepoch', 'localtime') AS INTEGER),
+        weekday = CAST(strftime('%w', created_at, 'unixepoch', 'localtime') AS INTEGER),
+        hour    = CAST(strftime('%H', created_at, 'unixepoch', 'localtime') AS INTEGER)
+      WHERE year IS NULL OR month IS NULL OR day IS NULL OR hour IS NULL
+    `).run();
+    return { updated: info.changes };
+  }
+
   // ── Writing clips ──────────────────────────────────────────────────────────
   addClip(clip) {
     const now = Math.floor(Date.now() / 1000);
@@ -535,4 +623,9 @@ function autoTags(clip) {
   return tags;
 }
 
-module.exports = { ClipDatabase, SCHEMA_VERSION, ftsQuery };
+function toSeconds(v) {
+  const n = Number(v) || 0;
+  return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
+}
+
+module.exports = { ClipDatabase, SCHEMA_VERSION, ftsQuery, toSeconds };
