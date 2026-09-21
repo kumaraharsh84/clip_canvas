@@ -67,6 +67,7 @@ function start() {
   activeWorkspaceId = (ws.find((w) => w.is_default) || ws[0] || {}).id || null;
 
   registerAssetProtocol();
+  registerIpc();
   createWindow();
   createTray();
 
@@ -295,7 +296,97 @@ function broadcast(channel, payload) {
   }
 }
 
+// ── IPC ──────────────────────────────────────────────────────────────────────
+function registerIpc() {
+  // Every handler returns the same envelope preload.safeInvoke unwraps, and a
+  // throw becomes { success: false } rather than an unhandled rejection that
+  // leaves the renderer waiting forever.
+  const handle = (channel, fn) => {
+    ipcMain.handle(channel, async (_e, ...args) => {
+      try {
+        return { success: true, data: await fn(...args) };
+      } catch (err) {
+        console.error(`[clipcanvas] IPC "${channel}":`, err);
+        return { success: false, error: err.message || String(err) };
+      }
+    });
+  };
+
+  handle("workspaces:list", () => db.listWorkspaces());
+  handle("workspaces:create", (name) => db.createWorkspace(name));
+  handle("workspaces:setActive", (id) => {
+    activeWorkspaceId = id;
+    broadcast("workspace:changed", id);
+    return { ok: true, activeWorkspaceId };
+  });
+
+  handle("boards:list", (wid) => db.listBoards(wid || activeWorkspaceId));
+  handle("boards:setActive", () => ({ ok: true }));
+  handle("boards:create", ({ workspaceId, name }) =>
+    db.createBoard(workspaceId || activeWorkspaceId, name));
+  handle("boards:rename", ({ id, name }) => db.renameBoard(id, name));
+  handle("boards:delete", (id) => db.deleteBoard(id));
+
+  handle("clips:getPage", (opts = {}) => db.getClipPage(withWorkspace(opts)));
+  handle("clips:getAll", (opts = {}) => db.getClips(withWorkspace(opts)));
+  handle("clips:getSummaries", (opts = {}) => db.getClipSummaries(withWorkspace(opts)));
+  handle("clips:getById", (id) => db.getClipById(id));
+  handle("clips:getContent", (id) => db.getClipContent(id));
+  handle("clips:search", (opts = {}) => db.searchClips(withWorkspace(opts)));
+  handle("clips:update", ({ id, patch }) => db.updateClip(id, patch));
+  handle("clips:delete", (ids) => db.deleteClips(toArray(ids)));
+  handle("clips:restore", (ids) => db.restoreClips(toArray(ids)));
+  handle("clips:archive", (ids) => db.archiveClips(toArray(ids)));
+  handle("clips:trashSummary", (opts = {}) => db.getTrashSummary(withWorkspace(opts)));
+  handle("clips:emptyTrash", (opts = {}) => db.emptyTrash(withWorkspace(opts)));
+
+  /**
+   * Put a clip back on the clipboard. lastText/lastImageHash are updated first
+   * so the watcher does not immediately re-capture what we just wrote and
+   * duplicate the clip on every copy-back.
+   */
+  handle("clips:copyBack", (id) => {
+    const clip = db.getClipById(id);
+    if (!clip) throw new Error("clip not found");
+
+    if (clip.type === "image" && clip.asset_path) {
+      const img = nativeImage.createFromPath(path.join(storageDir, clip.asset_path));
+      if (img.isEmpty()) throw new Error("image asset missing");
+      lastImageHash = hashBuffer(img.toPNG());
+      clipboard.writeImage(img);
+    } else {
+      lastText = clip.content || "";
+      clipboard.writeText(lastText);
+    }
+    return { ok: true, id };
+  });
+
+  handle("time:getYears", (wid) => db.getYears(wid || activeWorkspaceId));
+  handle("time:getMonths", ({ year, workspaceId } = {}) =>
+    db.getMonths(year, workspaceId || activeWorkspaceId));
+  handle("time:getDays", ({ year, month, workspaceId } = {}) =>
+    db.getDays(year, month, workspaceId || activeWorkspaceId));
+  handle("time:getHours", ({ year, month, day, workspaceId } = {}) =>
+    db.getHours(year, month, day, workspaceId || activeWorkspaceId));
+  handle("time:getClipsInTimeRange", ({ startTimestamp, endTimestamp, workspaceId } = {}) =>
+    db.getClipsInTimeRange(startTimestamp, endTimestamp, workspaceId || activeWorkspaceId));
+  handle("time:getSessions", ({ startTimestamp, endTimestamp, workspaceId, gapMinutes } = {}) =>
+    db.getSessions(startTimestamp, endTimestamp, workspaceId || activeWorkspaceId, gapMinutes));
+  handle("time:backfill", () => db.backfillTimeColumns());
+
+  handle("storage:getStats", (opts = {}) => db.getStorageStats(withWorkspace(opts)));
+  handle("storage:openFolder", () => { shell.openPath(storageDir); return { ok: true }; });
+  handle("settings:getMaxFileSize", () => 0);
+
+  handle("window:hide", () => { if (win) win.hide(); return null; });
+  handle("window:minimize", () => { if (win) win.minimize(); return null; });
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
+function withWorkspace(opts) {
+  return { ...opts, workspaceId: opts.workspaceId || activeWorkspaceId };
+}
+function toArray(v) { return Array.isArray(v) ? v : [v]; }
 function hashBuffer(buf) { return crypto.createHash("sha1").update(buf).digest("hex"); }
 
 function mimeFor(file) {
