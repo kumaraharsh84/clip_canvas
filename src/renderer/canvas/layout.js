@@ -29,6 +29,7 @@
 //    at some zoom level rather than merely present.
 // ─────────────────────────────────────────────────────────────────────────────
 
+const { fitCard } = require("./textlayout");
 const { categoryOf, blockOf, mix, rgbCss, BG } = require("./classify");
 
 // Text metrics at font scale 1, in world units. Monospace: see textlayout.js.
@@ -44,6 +45,8 @@ const MIN_FACTOR = 0.35;        // a one-word clip is still a visible tile
 const MAX_FACTOR = 8;           // no clip may dominate the canvas
 const IMAGE_FACTOR = 1.15;
 const FONT_SCALE_FLOOR = 0.05;  // see clipWeight
+const CHROME_ALLOWANCE = 1.22;  // headers, padding and gaps across four levels
+const READABLE_PX = 7;          // body font size that counts as readable
 
 const DEPTH = { YEAR: 0, MONTH: 1, DAY: 2, HOUR: 3, CLIP: 4 };
 
@@ -193,6 +196,209 @@ function clipWeight(clip, cat) {
   return Math.max(compressed, floor);
 }
 
+// ── Layout ───────────────────────────────────────────────────────────────────
+/**
+ * Lay the whole tree out on a canvas of the given aspect, then fit every card's
+ * text. One pass: because text now scales to its box, no box ever has to be
+ * grown to fit its text, so the fixed-point loop the old layout needed is gone.
+ */
+function layoutAuto(root, { aspect = 1.6, origin = { x: 0, y: 0 } } = {}) {
+  const area = Math.max(1, root.weight) * CHROME_ALLOWANCE;
+  const w = Math.sqrt(area * aspect);
+  root.x = origin.x;
+  root.y = origin.y;
+  root.w = w;
+  root.h = area / w;
+
+  layoutNode(root);
+
+  let minFontScale = 1;
+  let worst = 0;
+  let failed = 0;
+  (function walk(n) {
+    if (n.clip) {
+      if (!n.fit) return;
+      if (n.fit.scale < minFontScale) minFontScale = n.fit.scale;
+      const r = n.fit.neededHeight / n.body.h;
+      if (r > worst) worst = r;
+      if (!n.fit.fits) failed++;
+      return;
+    }
+    for (const kid of n.children) walk(kid);
+  })(root);
+
+  // Deep enough that the smallest text on the canvas can be read.
+  const maxZoom = Math.min(600, Math.max(8, READABLE_PX / (CARD_FONT_PX * minFontScale)));
+
+  return { root, area, iterations: 1, worstOverflow: worst, minFontScale, maxZoom, failed };
+}
+
+function layoutNode(n) {
+  chrome(n);
+  const inner = {
+    x: n.x + n.pad,
+    y: n.y + n.hdr,
+    w: Math.max(1, n.w - 2 * n.pad),
+    h: Math.max(1, n.h - n.hdr - n.pad),
+  };
+
+  if (n.clip) {
+    n.body = inner;
+    n.fit = n.clip.type === "image"
+      ? null
+      : fitCard(n.clip.content || "", inner.w, inner.h, CARD_CHAR_W, CARD_LINE_H, COL_GAP);
+    return;
+  }
+
+  if (!n.children.length) return;
+
+  stripLayout(n.children, inner, n.gap);
+  for (const kid of n.children) layoutNode(kid);
+}
+
+/** A node's weight for the purpose of sharing space among its siblings. */
+function lw(n) {
+  return n.lw !== undefined ? n.lw : n.weight;
+}
+
+/**
+ * Header, padding and gap for a box, proportional to the box itself.
+ *
+ * Fixed-size chrome is what the reference avoids: its labels are small text in
+ * the corner of each box, legible once that box fills your screen. Scaling the
+ * header with the box gives the same behaviour -- a year's title is readable at
+ * the full-archive view, an hour's once you have flown to that day -- and it
+ * stays a few percent of the box at every level instead of swamping small ones.
+ */
+function chrome(n) {
+  const size = Math.sqrt(Math.max(1, n.w * n.h));
+  if (n.depth < 0) {
+    n.hdr = size * 0.004;
+    n.pad = size * 0.004;
+    n.gap = size * 0.004;
+  } else if (!n.clip) {
+    n.hdr = Math.max(6, size * 0.024);
+    n.pad = n.hdr * 0.28;
+    n.gap = n.hdr * 0.22;
+  } else {
+    // Proportional to the card, but never more than ~6 lines of the card's own
+    // text. A big card holds a long clip at a small font, and a header scaled
+    // to the card alone dwarfed that text when zoomed in. The cap is loose on
+    // purpose: at 2.4 lines most headers became unreadable strips at hour zoom,
+    // and the clock time on each card is the point of a time canvas. The drawn
+    // band is capped separately, in screen pixels (renderer2d.drawCardHeader).
+    const len = Math.max(1, (n.clip.content || "").length);
+    const textScale = n.clip.type === "image"
+      ? 1
+      : Math.min(1, Math.sqrt((n.w * n.h * 0.85) / (len * CARD_CHAR_W * CARD_LINE_H)));
+    const cap = Math.max(12, CARD_LINE_H * textScale * 6);
+    n.hdr = Math.max(3, Math.min(size * 0.08, cap));
+    n.pad = Math.max(1.2, size * 0.022);
+    n.gap = 0;
+  }
+}
+
+/**
+ * ORDER-PRESERVING strip treemap.
+ *
+ * Fills horizontal strips left to right, top to bottom, closing a strip when
+ * adding the next item would worsen its mean aspect ratio. Reading order is
+ * exactly array order, which after rollUp() is chronological. Aspect ratios are
+ * a little worse than squarify's, which matters little now that cards flow text
+ * into multiple columns: a wide strip is a fine card shape.
+ */
+function stripLayout(nodes, rect, gap) {
+  let total = 0;
+  for (const n of nodes) total += lw(n);
+  if (total <= 0) total = 1;
+
+  const scale = (rect.w * rect.h) / total;
+  const width = rect.w;
+  if (width <= 0) return;
+
+  // 1. Greedy strips, in order.
+  const strips = [];
+  let i = 0;
+  while (i < nodes.length) {
+    let count = 1;
+    let sum = lw(nodes[i]) * scale;
+    let best = stripAspect(nodes, i, count, sum, width, scale);
+
+    while (i + count < nodes.length) {
+      const nextSum = sum + lw(nodes[i + count]) * scale;
+      const cand = stripAspect(nodes, i, count + 1, nextSum, width, scale);
+      if (cand > best) break;
+      count++;
+      sum = nextSum;
+      best = cand;
+    }
+    strips.push({ from: i, count, sum });
+    i += count;
+  }
+
+  // 2. The final strip gets whatever is left over, stretched to the full
+  //    width -- often one or two items as a thin, very wide sliver. Text in a
+  //    box like that has to shrink until it is unreadable (measured: 0.3% font
+  //    scale, readable only at 217x zoom). Fold it into the strip above while
+  //    that improves the worst box shape. Order is untouched: it only moves a
+  //    strip boundary.
+  while (strips.length >= 2) {
+    const last = strips[strips.length - 1];
+    const prev = strips[strips.length - 2];
+    const apart = Math.max(
+      stripWorst(nodes, last.from, last.count, last.sum, width, scale),
+      stripWorst(nodes, prev.from, prev.count, prev.sum, width, scale)
+    );
+    const merged = stripWorst(nodes, prev.from, prev.count + last.count, prev.sum + last.sum, width, scale);
+    if (merged >= apart) break;
+    prev.count += last.count;
+    prev.sum += last.sum;
+    strips.pop();
+  }
+
+  // 3. Place.
+  const half = gap / 2;
+  let y = rect.y;
+  for (const st of strips) {
+    const h = st.sum / width;
+    let x = rect.x;
+    for (let k = 0; k < st.count; k++) {
+      const n = nodes[st.from + k];
+      const w = (lw(n) * scale / st.sum) * width;
+      n.x = x + half;
+      n.y = y + half;
+      n.w = Math.max(0.5, w - gap);
+      n.h = Math.max(0.5, h - gap);
+      x += w;
+    }
+    y += h;
+  }
+}
+
+/** Worst (largest) aspect ratio of `count` items starting at `from` in one strip. */
+function stripWorst(nodes, from, count, sum, width, scale) {
+  if (sum <= 0 || width <= 0) return Infinity;
+  const h = sum / width;
+  let worst = 0;
+  for (let k = 0; k < count; k++) {
+    const w = (lw(nodes[from + k]) * scale / sum) * width;
+    const r = w > h ? w / h : h / w;
+    if (r > worst) worst = r;
+  }
+  return worst;
+}
+
+/**
+ * Aspect criterion for growing a strip: the WORST box in it, not the mean.
+ * With the mean, a strip happily absorbs one tiny item as a 1-unit-wide sliver
+ * whenever the average still improves -- measured: hour boxes 1 x 2,787 world
+ * units, their text wrapped at one character per line. Squarified treemaps use
+ * the worst box for exactly this reason.
+ */
+function stripAspect(nodes, from, count, sum, width, scale) {
+  return stripWorst(nodes, from, count, sum, width, scale);
+}
+
 // ── Time helpers ─────────────────────────────────────────────────────────────
 /**
  * Clip timestamps to a Date. The clips table stores created_at as INTEGER Unix
@@ -263,9 +469,9 @@ function hourKey(date) {
 }
 
 module.exports = {
-  buildTree, clipWeight,
+  buildTree, layoutAuto, stripLayout, clipWeight,
   DEPTH, CARD_FONT_PX, CARD_LINE_H, CARD_CHAR_W, COL_GAP,
-  BASE_AREA, MIN_FACTOR, MAX_FACTOR, FONT_SCALE_FLOOR,
+  BASE_AREA, MIN_FACTOR, MAX_FACTOR, FONT_SCALE_FLOOR, READABLE_PX,
   MONTH_SHORT, MONTH_LONG, WEEKDAY_SHORT,
   toDate, clockLabel, hourLabel, dayLabel, hourKey,
 };
