@@ -257,3 +257,53 @@ button.on { border-color: var(--ok); color: var(--ok); }
 #d-bodywrap img { display: block; max-width: 100%; margin: 0 auto; }
 
 .meta { color: var(--dim); font: 10px var(--mono); }
+
+/* ── Search results ────────────────────────────────────────────────────────── */
+#results {
+  position: absolute;
+  left: 10px;
+  top: 28px;
+  width: min(430px, 44vw);
+  max-height: 60%;
+  overflow: auto;
+  background: #10151bf5;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  box-shadow: 0 8px 26px #0008;
+}
+
+.result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--edge);
+  border-radius: 0;
+  background: none;
+  padding: 7px 10px;
+}
+
+.result:hover { background: #1a222c; }
+.result .r-head { display: flex; gap: 7px; align-items: center; margin-bottom: 2px; }
+.result .r-when { color: var(--dim); font: 10px var(--mono); margin-left: auto; }
+.result .r-body {
+  color: var(--dim);
+  font: 11px var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Empty state ───────────────────────────────────────────────────────────── */
+#empty {
+  position: absolute;
+  inset: 0 0 var(--timeline-h) 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  color: var(--dim);
+  gap: 6px;
+  pointer-events: none;
+}
+
+#empty b { color: var(--ink); font-size: 15px; }
