@@ -58,3 +58,60 @@ Three rules keep its boxes a readable shape:
 
 **Every clip is readable, not just present.** The viewport's maximum zoom is
 set from the smallest text on the canvas, so any clip can be zoomed to ≥ 7 px.
+
+## Controls
+
+| | |
+| --- | --- |
+| scroll / pinch | smooth zoom toward the cursor |
+| drag | pan, with inertia |
+| click | select a clip |
+| double-click | fly into the box under the cursor |
+| right-click / Backspace | fly back out one level |
+| F / Home | fit everything |
+| + / − · arrows | zoom · pan |
+
+The timeline strip lights the days currently on screen; click a day to fly to it.
+
+## Verify
+
+```bash
+node scratch/verify-timecanvas-2d.js --clips=20000
+npx electron scratch/verify-app.js --perf --shots=out
+```
+
+The first runs on plain Node: wrapping is exact and lossless, no boxes overlap,
+clips are in copy order, and — for every card — the full text fits at its own
+font scale, columns have a readable shape, no card is a sliver, no card
+dominates, and the smallest text is reachable at max zoom. Measured at 20,000
+clips: 539 ms layout, worst card aspect 7.8:1, smallest text 12.9% at 8× zoom,
+largest card 0.13% of the canvas.
+
+The second drives the real app against a **copy** of your database, at three
+zoom levels, and writes screenshots. It renders offscreen, because a hidden
+window stops producing frames and `capturePage` returns a stale one.
+
+## Demo
+
+```bash
+node demo/serve.js
+```
+
+Open <http://localhost:8790> and pick up to 40,000 synthetic clips.
+
+## Rebuild the bundle after editing any module
+
+The renderer runs under `contextIsolation`, so it loads a bundle, not modules:
+
+```bash
+node src/renderer/canvas/build.js src/renderer/timecanvas.bundle.js
+node src/renderer/canvas/build.js demo/timecanvas.bundle.js
+```
+
+## Notes
+
+- `created_at` is INTEGER Unix **seconds**; `layout.toDate` handles that.
+- Container keys are full paths (`root/y2026/m9/d5/h12`) so the current-hour
+  marker lights exactly one hour, not the same hour on every day.
+- The page CSP is `style-src 'self'`: set colours through `element.style`, never
+  as `style="…"` in HTML strings, or they are silently dropped.
