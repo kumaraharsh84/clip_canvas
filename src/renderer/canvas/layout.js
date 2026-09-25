@@ -29,7 +29,7 @@
 //    at some zoom level rather than merely present.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { categoryOf } = require("./classify");
+const { categoryOf, blockOf, mix, rgbCss, BG } = require("./classify");
 
 // Text metrics at font scale 1, in world units. Monospace: see textlayout.js.
 const CARD_FONT_PX = 12;
@@ -53,6 +53,121 @@ const MONTH_LONG = ["January", "February", "March", "April", "May", "June", "Jul
                     "August", "September", "October", "November", "December"];
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAY_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+// ── Tree building ────────────────────────────────────────────────────────────
+function buildTree(clips) {
+  const root = node("root", "All clips", -1, null, 0, null);
+  root.labelLong = "All clips";
+
+  for (const clip of clips) {
+    const d = toDate(clip.created_at);
+    const t = timeParts(clip, d);
+
+    const y = child(root, "y" + t.year, String(t.year), DEPTH.YEAR, t, t.year);
+    const m = child(y, "m" + t.month, MONTH_SHORT[t.month - 1], DEPTH.MONTH, t, t.month);
+    const dd = child(m, "d" + t.day, dayLabel(t), DEPTH.DAY, t, t.day);
+    const h = child(dd, "h" + t.hour, hourLabel(t.hour), DEPTH.HOUR, t, t.hour);
+
+    const ts = d.getTime() || 0;
+    const cat = categoryOf(clip);
+    const block = blockOf(clip, cat);
+
+    const leaf = node("c" + clip.id, clip.title || cat.label, DEPTH.CLIP, t, ts, h);
+    leaf.clip = clip;
+    leaf.ts = ts;
+    leaf.timeLabel = clockLabel(d);
+    leaf.cat = cat;
+    leaf.block = block.css;
+    leaf.blockRgb = block.rgb;
+    leaf.headerText = clip.title || cat.label;
+    // How much of the header a far-away card paints as a "filename" dash.
+    leaf.titleFrac = Math.min(1, 0.35 + leaf.headerText.length / 40);
+    leaf.weight = clipWeight(clip, cat);
+    h.children.push(leaf);
+  }
+
+  rollUp(root);
+  return root;
+}
+
+function node(key, label, depth, time, sortKey, parent) {
+  return {
+    key, label, labelLong: label, depth, time,
+    sortKey: sortKey || 0,
+    parent: parent || null,
+    children: [], weight: 0, count: 0,
+    x: 0, y: 0, w: 0, h: 0,
+    hdr: 0, pad: 0, gap: 0,
+    clip: null,
+  };
+}
+
+/**
+ * Find-or-create a container. Keys are full paths ("root/y2026/m9/d5/h12"), so
+ * the 12 PM of one day is never confused with the 12 PM of another -- which is
+ * exactly the bug the old flat "h12" keys had: the current-hour marker lit up
+ * the same hour on every day.
+ */
+function child(parent, localKey, label, depth, t, sortKey) {
+  if (!parent._index) parent._index = new Map();
+  let c = parent._index.get(localKey);
+  if (!c) {
+    c = node(parent.key + "/" + localKey, label, depth, t, sortKey, parent);
+    c.labelLong = longLabel(depth, t);
+    parent.children.push(c);
+    parent._index.set(localKey, c);
+  }
+  return c;
+}
+
+/**
+ * Sum weights, counts, time span, category counts and average colour bottom-up,
+ * and put children in CHRONOLOGICAL order -- never size order (see the header).
+ */
+function rollUp(n) {
+  if (n.clip) {
+    n.count = 1;
+    n.tsMin = n.tsMax = n.ts;
+    return;
+  }
+
+  let w = 0;
+  let c = 0;
+  let tsMin = Infinity;
+  let tsMax = -Infinity;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  const cats = {};
+
+  for (const kid of n.children) {
+    rollUp(kid);
+    w += kid.weight;
+    c += kid.count;
+    if (kid.tsMin < tsMin) tsMin = kid.tsMin;
+    if (kid.tsMax > tsMax) tsMax = kid.tsMax;
+
+    const rgb = kid.clip ? kid.blockRgb : kid.avgRgb;
+    r += rgb[0] * kid.weight;
+    g += rgb[1] * kid.weight;
+    b += rgb[2] * kid.weight;
+
+    if (kid.clip) cats[kid.cat.id] = (cats[kid.cat.id] || 0) + 1;
+    else for (const id in kid.cats) cats[id] = (cats[id] || 0) + kid.cats[id];
+  }
+
+  n.weight = w;
+  n.count = c;
+  n.tsMin = tsMin;
+  n.tsMax = tsMax;
+  n.cats = cats;
+  n.avgRgb = w > 0 ? [r / w, g / w, b / w] : BG.slice();
+  // A container too small to open is painted as the blend of what is inside
+  // it, so even collapsed regions keep the mosaic's colour.
+  n.blockColor = rgbCss(mix(n.avgRgb, BG, 0.12));
+  n.children.sort((a, b2) => a.sortKey - b2.sortKey);
+  delete n._index;
+}
 
 // ── Card size ────────────────────────────────────────────────────────────────
 /**
@@ -148,7 +263,7 @@ function hourKey(date) {
 }
 
 module.exports = {
-  clipWeight,
+  buildTree, clipWeight,
   DEPTH, CARD_FONT_PX, CARD_LINE_H, CARD_CHAR_W, COL_GAP,
   BASE_AREA, MIN_FACTOR, MAX_FACTOR, FONT_SCALE_FLOOR,
   MONTH_SHORT, MONTH_LONG, WEEKDAY_SHORT,
