@@ -48,6 +48,8 @@ const REAL_TEXT_PX = 6.5;      // body font size at which glyphs are drawn
 const DIRECT_LINE_PX = 2.4;    // line height at which dashes are drawn live
 const TEXTURE_MIN_PX = 7;      // card size at which its texture is worth using
 const RECURSE_MIN_PX = 3;      // containers below this are not opened
+const TEX_MAX = 512;
+const FRAME_TEX_BUDGET_MS = 6; // texture painting allowed per frame
 
 class Renderer2D {
   constructor(canvas, { imageCache = null, textureCache = null, theme = THEME } = {}) {
@@ -90,6 +92,8 @@ class Renderer2D {
     this.view = vp.worldBounds();
     this.W = vp.width;
     this.H = vp.height;
+    this.texDeadline = t0 + FRAME_TEX_BUDGET_MS;
+    this.texStarved = false;
 
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.fillStyle = this.theme.bg;
@@ -103,6 +107,7 @@ class Renderer2D {
     this.stats.level = level.id;
     this.stats.zoomLabel = level.label;
     this.stats.scale = vp.scale;
+    this.stats.needsMore = this.texStarved;
     this.stats.ms = performance.now() - t0;
     return this.stats;
   }
@@ -334,6 +339,7 @@ class Renderer2D {
     if (!f || bw < 1 || bh < 1) return;
     const k = f.scale * this.vp.scale; // screen px per unit of base font
     if (L.CARD_LINE_H * k >= DIRECT_LINE_PX) this.drawTextDirect(n, bx, by, bw, bh, k);
+    else this.drawTextTexture(n, bx, by, bw, bh);
   }
 
   /** Distances 3 and 4: dashes or glyphs, drawn live, visible lines only. */
@@ -430,6 +436,111 @@ class Renderer2D {
     ctx.textBaseline = "top";
   }
 
+  /** Distance 2: the card's text as one pre-painted bitmap. */
+  drawTextTexture(n, bx, by, bw, bh) {
+    const ctx = this.ctx;
+    if (!this.textures) {
+      ctx.fillStyle = n.cat.faint;
+      ctx.fillRect(bx, by, bw, bh);
+      return;
+    }
+
+    // Sizes step by sqrt(2), not 2. Power-of-two sizes oversample by up to 2x,
+    // and shrinking a texture of 1px dashes by half smears them into grey.
+    let tw = Math.min(TEX_MAX, texStep(Math.max(16, bw)));
+    let th = Math.max(2, Math.round(tw * n.body.h / n.body.w));
+    if (th > TEX_MAX) {
+      th = TEX_MAX;
+      tw = Math.max(2, Math.round(TEX_MAX * n.body.w / n.body.h));
+    }
+
+    let bmp = this.textures.get(n.key, tw);
+    if (!bmp) {
+      if (performance.now() < this.texDeadline) {
+        bmp = this.textures.make(n.key, tw, tw, th, (tctx, w, h) => this.paintTexture(tctx, n, w, h));
+        this.stats.texturesMade++;
+      } else {
+        // Out of budget this frame: use any size already painted, and ask the
+        // frame loop to come back for the rest.
+        this.texStarved = true;
+        bmp = this.textures.getAny(n.key);
+      }
+    }
+
+    if (bmp) {
+      ctx.drawImage(bmp, bx, by, bw, bh);
+      this.stats.textures++;
+    } else {
+      ctx.fillStyle = n.cat.faint;
+      ctx.fillRect(bx, by, bw, bh);
+    }
+  }
+
+  paintTexture(ctx, n, w, h) {
+    const f = n.fit;
+    const cat = n.cat;
+    const pal = cat.palette;
+    const unit = f.scale * (w / n.body.w); // texture px per unit of base font
+    const lineH = L.CARD_LINE_H * unit;
+    const charW = L.CARD_CHAR_W * unit;
+    const gap = L.COL_GAP * unit;
+    const colW = f.colChars * charW;
+
+    const lines = wrapLines(n.clip.id, n.clip.content || "", f.colChars);
+    const rec = tokenRecord(n.clip.id + ":" + f.colChars, cat.lang, lines);
+
+    // Below ~1px per line, sample every Nth line: a 512px texture cannot show
+    // more than 512 rows anyway, and sampling keeps the paint cost bounded by
+    // the texture size rather than by the length of the clip.
+    const step = lineH >= 0.9 ? 1 : Math.ceil(0.9 / lineH);
+    const barH = Math.max(0.6, lineH * step * 0.55);
+    // Per-token dashes stay legible as texture well below 1px per character:
+    // a 5-letter word is still a 2px dash with a gap after it. Collapsing each
+    // line to one bar any earlier turned long clips into grey smears.
+    const perToken = charW >= 0.4;
+    const paths = new Map();
+    const bh = Math.max(1, Math.round(barH));
+    const add = (col, x, y, ww) => {
+      let p = paths.get(col);
+      if (!p) paths.set(col, (p = new Path2D()));
+      const x0 = Math.round(x);
+      p.rect(x0, Math.round(y), Math.max(1, Math.round(x + ww) - x0), bh);
+    };
+
+    for (let c = 0; c < f.columns; c++) {
+      const cx = c * (colW + gap);
+      if (cx >= w) break;
+      const start = c * f.linesPerColumn;
+      if (start >= lines.length) break;
+      const end = Math.min(lines.length, start + f.linesPerColumn);
+
+      for (let i = start; i < end; i += step) {
+        const y = (i - start) * lineH + (lineH - barH) / 2;
+        if (y > h) break;
+        const r = runsAt(rec, i);
+        if (!r.length) continue;
+
+        if (perToken) {
+          for (let t = 0; t < r.length; t += 3) {
+            add(pal[r[t + 2]], cx + r[t] * charW, y, (r[t + 1] - r[t]) * charW);
+          }
+        } else {
+          // Too small for separate words: one dash per line, in the colour of
+          // its longest run.
+          let bestLen = -1;
+          let bestCls = r[2];
+          for (let t = 0; t < r.length; t += 3) {
+            const len = r[t + 1] - r[t];
+            if (len > bestLen) { bestLen = len; bestCls = r[t + 2]; }
+          }
+          add(pal[bestCls], cx + r[0] * charW, y, (r[r.length - 2] - r[0]) * charW);
+        }
+      }
+    }
+
+    for (const [col, p] of paths) { ctx.fillStyle = col; ctx.fill(p); }
+  }
+
   // ── Queries ────────────────────────────────────────────────────────────────
   /**
    * The box that currently frames the view: the deepest node containing the
@@ -462,6 +573,10 @@ class Renderer2D {
     })(tree);
     return found && found.depth >= 0 ? found : null;
   }
+}
+
+function texStep(v) {
+  return Math.round(Math.pow(Math.SQRT2, Math.ceil(Math.log2(Math.max(1, v)) * 2)));
 }
 
 function emptyStats() {
