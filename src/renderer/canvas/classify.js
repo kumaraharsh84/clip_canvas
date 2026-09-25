@@ -118,10 +118,24 @@ function detect(clip) {
 
   if (clip.type === "url" || /^https?:\/\/\S+$/i.test(trimmed)) return CATEGORIES.url;
   if (clip.type === "code") {
-    // A copy out of a terminal is Shell. Left to the language vote, its
-    // command output made it Other code, JSON or SQL.
+    // The capture-time "code" label is unreliable: measured on real history,
+    // 81 of 245 code-labelled clips were chats, prompts, plans and reports
+    // (English and Hinglish), and ~12 more were terminal sessions filed under
+    // "Other code", JSON or SQL. The order below is what fixed them:
+    //   1. a terminal session is Shell, whatever it quotes
+    //   2. otherwise, text that reads as prose is prose -- even if it mentions
+    //      a command or keyword, which is all it took to win the language vote
+    //   3. otherwise, detect the language
     if (looksLikeTerminal(head)) return CATEGORIES.shell;
-    return CATEGORIES[detectLanguage(head)] || CATEGORIES.code;
+    const lang = scoreLanguage(head);
+    // JSON and key/value config are recognised by structure, not vocabulary,
+    // so they are certain -- and "name: demo" lines would otherwise read as
+    // short prose.
+    if (lang.score === Infinity) return CATEGORIES[lang.lang];
+    if (looksLikeProse(head)) {
+      return CATEGORIES.prose;
+    }
+    return CATEGORIES[lang.lang] || CATEGORIES.code;
   }
 
   if (trimmed.length <= 80 && trimmed.indexOf("\n") === -1) return CATEGORIES.snippet;
@@ -267,6 +281,70 @@ function looksLikeTerminal(src) {
   return n / lines.length >= 0.3;
 }
 
+// ── Prose ────────────────────────────────────────────────────────────────────
+// Language-agnostic on purpose. A test built on English function words scores
+// a Hinglish message ("Theek hai, seedha jawab: ...") at zero, and that is a
+// large share of real clipboard history. What separates prose from code in any
+// language is its shape: few code symbols, mostly plain words, sentence-length
+// lines, and lines that do not end in ; { } ( or ,.
+
+// Markdown structure -- bullets, numbering, headings, table pipes, arrows and
+// dashes. Counted neither for nor against prose: a bulleted plan is still prose.
+const NEUTRAL_TOKEN = /^(?:[-*•>|→—–]+|#{1,6}|\d{1,3}[.)])$/;
+// A word in any script, allowing quotes, markdown emphasis and trailing punctuation.
+const WORD_TOKEN = /^[("'*_`[]*\p{L}[\p{L}\p{M}'’-]*[)"'*_`\].,!?:;]*$/u;
+
+function proseStats(src) {
+  const s = src.length > 6000 ? src.slice(0, 6000) : src;
+
+  const symbols = (s.match(/[{}[\]();=<>|&\\$^~]/g) || []).length;
+  let words = 0;
+  let counted = 0;
+  for (const t of s.split(/\s+/)) {
+    if (!t || NEUTRAL_TOKEN.test(t)) continue;
+    counted++;
+    if (WORD_TOKEN.test(t)) words++;
+  }
+
+  const lines = s.split("\n").map((l) => l.trim()).filter(Boolean);
+  // Only strong code endings. Prose headings end in ")" -- "(No Code Changes)"
+  // -- and list items in ","; counting those misfiled plans and reports.
+  const codeEnd = lines.filter((l) => /[;{}]$|=>$/.test(l)).length;
+  let sentences = 0;
+  for (const l of lines) {
+    let n = 0;
+    for (const t of l.split(/\s+/)) if (WORD_TOKEN.test(t)) n++;
+    if (n >= 3) sentences++;
+  }
+
+  return {
+    words,
+    symbolDensity: s.length ? symbols / s.length : 0,
+    wordRatio: counted ? words / counted : 0,
+    wordsPerLine: lines.length ? words / lines.length : 0,
+    codeEndRatio: lines.length ? codeEnd / lines.length : 0,
+    sentenceShare: lines.length ? sentences / lines.length : 0,
+  };
+}
+
+/**
+ * Checked against every text- and code-labelled clip in real history (540),
+ * reviewing each clip whose label changed. What it deliberately leaves as code:
+ * messages that are mostly commands, and agent transcripts dominated by command
+ * output -- they sit right on the symbol threshold beside real Python modules
+ * (0.036-0.040 vs 0.037), so any rule loose enough to take them takes those too.
+ */
+function looksLikeProse(src) {
+  const f = proseStats(src);
+  if (f.words < 4 || f.wordRatio < 0.65 || f.codeEndRatio > 0.2) return false;
+  // Ordinary prose: few code symbols, and sentence-length lines -- or, for
+  // bulleted documents of short lines, a fair share of real sentences.
+  if (f.symbolDensity <= 0.035 && (f.wordsPerLine >= 2 || f.sentenceShare >= 0.2)) return true;
+  // Prose full of inline code (a task prompt quoting selectors and calls):
+  // denser in symbols, but nearly every line is a sentence.
+  return f.symbolDensity <= 0.08 && f.sentenceShare >= 0.85;
+}
+
 /**
  * The clip's mosaic colour: its category block with a small, stable lightness
  * jitter. Neighbouring clips of the same kind would otherwise merge into one
@@ -310,6 +388,6 @@ function hash01(v) {
 module.exports = {
   CATEGORIES, CATEGORY_LIST, TOKEN, BG,
   categoryOf, blockOf, detectLanguage, scoreLanguage,
-  looksLikeTerminal,
+  looksLikeTerminal, looksLikeProse, proseStats,
   mix, rgbCss, hexToRgb,
 };
