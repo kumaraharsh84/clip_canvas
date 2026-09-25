@@ -23,7 +23,7 @@
 //     placeholder and the frame loop comes back for them next frame
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { levelForDepth } = require("./lod");
+const { levelForDepth, thumbBudget } = require("./lod");
 
 const THEME = {
   bg: "#0b0f14",
@@ -207,6 +207,12 @@ class Renderer2D {
 
     const hdrPx = n.hdr * s;
     const padPx = n.pad * s;
+    const bx = sx + padPx;
+    const by = sy + hdrPx;
+    const bw = n.body.w * s;
+    const bh = n.body.h * s;
+
+    if (n.clip.type === "image") this.drawImageBody(n, bx, by, bw, bh);
 
     this.drawCardHeader(n, sx, sy, sw, hdrPx, padPx);
 
@@ -283,6 +289,28 @@ class Renderer2D {
     }
     ctx.restore();
     this.stats.labels++;
+  }
+
+  drawImageBody(n, bx, by, bw, bh) {
+    const ctx = this.ctx;
+    if (!this.images || bw < 10 || bh < 10) {
+      ctx.fillStyle = n.cat.faint;
+      ctx.fillRect(bx, by, bw, bh);
+      return;
+    }
+    const bmp = this.images.get(n.clip, thumbBudget({ w: n.body.w, h: n.body.h }, this.vp.scale));
+    if (!bmp) {
+      ctx.fillStyle = n.cat.faint;
+      ctx.fillRect(bx, by, bw, bh);
+      this.stats.thumbPending++;
+      return;
+    }
+    const ar = bmp.width / bmp.height;
+    let dw = bw;
+    let dh = bw / ar;
+    if (dh > bh) { dh = bh; dw = bh * ar; }
+    ctx.drawImage(bmp, bx + (bw - dw) / 2, by + (bh - dh) / 2, dw, dh);
+    this.stats.thumbs++;
   }
 
   // ── Queries ────────────────────────────────────────────────────────────────
