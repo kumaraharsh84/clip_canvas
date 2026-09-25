@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none';
+               script-src 'self';
+               style-src 'self';
+               img-src 'self' data: clip-asset:;
+               connect-src clip-asset:;">
+<title>ClipCanvas</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="topbar">
+  <div class="brand">ClipCanvas</div>
+
+  <label class="field">
+    <span>Workspace</span>
+    <select id="workspace"></select>
+  </label>
+
+  <label class="field">
+    <span>Board</span>
+    <select id="board"><option value="">All boards</option></select>
+  </label>
+
+  <label class="field">
+    <span>Show</span>
+    <select id="filter">
+      <option value="active">Active</option>
+      <option value="starred">Starred</option>
+      <option value="pinned">Pinned</option>
+      <option value="archived">Archived</option>
+      <option value="trash">Trash</option>
+      <option value="all">All</option>
+    </select>
+  </label>
+
+  <div class="spacer"></div>
+  <button id="fit" title="Fit everything (F)">Fit</button>
+  <button id="reload" title="Reload from database">Reload</button>
+  <span id="status"></span>
+</header>
+
+<main id="stage">
+  <div id="time-container"></div>
+
+  <div id="hint">scroll zoom · drag pan · double-click fly in · right-click fly out · F fit</div>
+
+  <aside id="info">
+    <div id="info-path"></div>
+    <div id="info-title"></div>
+    <div id="info-meta"></div>
+    <div id="info-cats"></div>
+    <div id="hud"></div>
+  </aside>
+
+  <div id="legend"></div>
+
+  <div id="empty" hidden></div>
+
+  <div id="timeline"></div>
+</main>
+
+<script src="timecanvas.bundle.js"></script>
+<script src="renderer.js"></script>
+</body>
+</html>
