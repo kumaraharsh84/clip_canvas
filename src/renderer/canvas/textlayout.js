@@ -180,6 +180,15 @@ const MIN_COL_CHARS = 20;    // below this, prefer fewer columns
 /**
  * @returns {{columns, colChars, totalLines, linesPerColumn, neededHeight}}
  */
+// Column shape limits. Without them, a card the strip layout made very wide
+// and very short -- the last strip of a container often is -- pours its text
+// into hundreds of one-line columns: complete, and unreadable. Measured on 20k
+// clips, one card flowed into 1,929 columns. Columns are kept at least
+// MIN_LINES_PER_COL lines tall and at most MAX_COL_CHARS wide, and the font
+// shrinks instead (fitCard) when that is what it takes to fit.
+const MIN_LINES_PER_COL = 12;
+const MAX_COL_CHARS = 120;
+
 function cardFlow(text, innerWidth, charW, lineH, colGap) {
   const shape = (wanted) => {
     let k = Math.max(1, wanted);
@@ -191,12 +200,20 @@ function cardFlow(text, innerWidth, charW, lineH, colGap) {
       if (cc >= MIN_COL_CHARS || k === 1) break;
       k--;
     }
-    cc = Math.max(1, cc);
+    cc = Math.max(1, Math.min(MAX_COL_CHARS, cc));
     return { columns: k, colChars: cc, totalLines: countLines(text, cc) };
   };
 
   const byWidth = Math.floor((innerWidth + colGap) / (TARGET_COL_CHARS * charW + colGap));
   let f = shape(byWidth);
+
+  // Too few lines to fill that many columns: use fewer, taller ones. Widening
+  // columns shortens the text, which can leave it short again, so repeat until
+  // it settles -- the column count strictly falls, so this terminates.
+  while (f.columns > 1 && f.totalLines < f.columns * MIN_LINES_PER_COL) {
+    const next = Math.max(1, Math.min(f.columns - 1, Math.floor(f.totalLines / MIN_LINES_PER_COL)));
+    f = shape(next);
+  }
 
   const linesPerColumn = Math.ceil(f.totalLines / f.columns);
   return {
@@ -214,6 +231,6 @@ function cacheStats() { return { wrap: wrapCache.stats(), fonts: charWidthCache.
 module.exports = {
   charWidth, charsPerLine,
   countLines, wrapLines, cardFlow,
-  TARGET_COL_CHARS, MIN_COL_CHARS,
+  TARGET_COL_CHARS, MIN_COL_CHARS, MIN_LINES_PER_COL, MAX_COL_CHARS,
   clearCaches, cacheStats,
 };
