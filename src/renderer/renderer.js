@@ -233,6 +233,61 @@
     scheduleReload();
   }
 
+  // ── Search ─────────────────────────────────────────────────────────────────
+  async function runSearch() {
+    const q = el.search.value.trim();
+    if (!q) { el.results.hidden = true; return; }
+
+    const hits = await api.clips.search({
+      query: q,
+      workspaceId: Number(el.workspace.value) || undefined,
+      boardId: Number(el.board.value) || undefined,
+      includeArchived: el.filter.value === "all" || el.filter.value === "archived",
+    });
+
+    el.results.hidden = false;
+    if (!hits.length) {
+      el.results.innerHTML = '<div class="result"><div class="r-body">No matches</div></div>';
+      return;
+    }
+
+    el.results.innerHTML = hits.map((c) => `
+      <button class="result" data-id="${c.id}">
+        <div class="r-head">
+          <span class="pill">${esc(c.type)}</span>
+          <span class="r-when">${whenText(c.created_at)}</span>
+        </div>
+        <div class="r-body">${esc(oneLine(c))}</div>
+      </button>`).join("");
+
+    for (const btn of el.results.querySelectorAll(".result[data-id]")) {
+      btn.addEventListener("click", () => {
+        const id = Number(btn.dataset.id);
+        const node = findNode(id);
+        if (node) {
+          tc.flyTo(node);
+          tc.renderer.selectedKey = node.key;
+          tc.invalidate();
+          onSelect(node.clip, node);
+        }
+        el.results.hidden = true;
+      });
+    }
+  }
+
+  /** Locate a clip's node so search can fly the camera to it. */
+  function findNode(id) {
+    const tree = tc.getTree();
+    if (!tree) return null;
+    let found = null;
+    (function walk(n) {
+      if (found) return;
+      if (n.clip) { if (n.clip.id === id) found = n; return; }
+      n.children.forEach(walk);
+    })(tree);
+    return found;
+  }
+
   // ── Events ─────────────────────────────────────────────────────────────────
   function wireEvents() {
     el.workspace.addEventListener("change", async () => {
@@ -244,6 +299,14 @@
     el.filter.addEventListener("change", () => reload());
     el.reload.addEventListener("click", () => reload({ keepView: true }));
     el.fit.addEventListener("click", () => tc.fitAll(true));
+
+    el.search.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") runSearch();
+      if (e.key === "Escape") { el.search.value = ""; el.results.hidden = true; el.search.blur(); }
+    });
+    el.search.addEventListener("input", () => {
+      if (!el.search.value.trim()) el.results.hidden = true;
+    });
 
     el.dClose.addEventListener("click", () => deselect());
     el.dTitle.addEventListener("change", () => patchSelected({ title: el.dTitle.value }));
@@ -278,10 +341,12 @@
     document.addEventListener("keydown", (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
       if (e.key === "Escape") {
+        if (!el.results.hidden) { el.results.hidden = true; return; }
         if (!el.details.hidden) { deselect(); return; }
         if (!typing) api.window.hide();
         return;
       }
+      if (!typing && e.key === "/") { e.preventDefault(); el.search.focus(); }
     });
   }
 
@@ -292,6 +357,20 @@
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+  /** created_at is Unix SECONDS -- see the note at the top of db.js. */
+  function whenText(ts) {
+    const n = Number(ts) || 0;
+    const d = new Date(n < 1e12 ? n * 1000 : n);
+    return d.toLocaleString(undefined, {
+      day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
+    });
+  }
+
+  function oneLine(c) {
+    if (c.type === "image") return c.title || "(image)";
+    return (c.content || "").replace(/\s+/g, " ").trim().slice(0, 160) || "(empty)";
+  }
+
   function fmtBytes(n) {
     if (!n) return "0 B";
     const u = ["B", "KB", "MB", "GB"];
