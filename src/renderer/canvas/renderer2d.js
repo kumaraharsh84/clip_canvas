@@ -24,6 +24,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { levelForDepth, thumbBudget } = require("./lod");
+const { wrapLines } = require("./textlayout");
+const { tokenRecord, runsAt } = require("./tokens");
+const L = require("./layout");
 
 const THEME = {
   bg: "#0b0f14",
@@ -37,9 +40,12 @@ const THEME = {
   now: "#39d98a",
 };
 
+const FONT_MONO = "ui-monospace, 'Cascadia Mono', Consolas, 'Courier New', monospace";
 const FONT_SANS = "system-ui, 'Segoe UI', sans-serif";
 
 // Screen-pixel thresholds for the four distances.
+const REAL_TEXT_PX = 6.5;      // body font size at which glyphs are drawn
+const DIRECT_LINE_PX = 2.4;    // line height at which dashes are drawn live
 const TEXTURE_MIN_PX = 7;      // card size at which its texture is worth using
 const RECURSE_MIN_PX = 3;      // containers below this are not opened
 
@@ -55,6 +61,15 @@ class Renderer2D {
     this.hoverKey = null;
     this.nowKey = null;
     this.stats = emptyStats();
+
+    // Layout reserves 0.6em per character. Real monospace fonts are narrower
+    // (Consolas is 0.55em), so glyph runs placed at their layout column would
+    // leave half-character gaps between tokens. Scale the drawn font so its
+    // advance is exactly 0.6em and runs join up.
+    const ctx = this.ctx;
+    ctx.font = "100px " + FONT_MONO;
+    const adv = ctx.measureText("0").width;
+    this.monoFix = adv > 0 ? 60 / adv : 1;
   }
 
   /** Size the backing store for devicePixelRatio; call on resize. */
@@ -213,6 +228,7 @@ class Renderer2D {
     const bh = n.body.h * s;
 
     if (n.clip.type === "image") this.drawImageBody(n, bx, by, bw, bh);
+    else this.drawTextBody(n, bx, by, bw, bh);
 
     this.drawCardHeader(n, sx, sy, sw, hdrPx, padPx);
 
@@ -311,6 +327,107 @@ class Renderer2D {
     if (dh > bh) { dh = bh; dw = bh * ar; }
     ctx.drawImage(bmp, bx + (bw - dw) / 2, by + (bh - dh) / 2, dw, dh);
     this.stats.thumbs++;
+  }
+
+  drawTextBody(n, bx, by, bw, bh) {
+    const f = n.fit;
+    if (!f || bw < 1 || bh < 1) return;
+    const k = f.scale * this.vp.scale; // screen px per unit of base font
+    if (L.CARD_LINE_H * k >= DIRECT_LINE_PX) this.drawTextDirect(n, bx, by, bw, bh, k);
+  }
+
+  /** Distances 3 and 4: dashes or glyphs, drawn live, visible lines only. */
+  drawTextDirect(n, bx, by, bw, bh, k) {
+    const ctx = this.ctx;
+    const f = n.fit;
+    const cat = n.cat;
+    const pal = cat.palette;
+    const charW = L.CARD_CHAR_W * k;
+    const lineH = L.CARD_LINE_H * k;
+    const gap = L.COL_GAP * k;
+    const colW = f.colChars * charW;
+    const fontPx = L.CARD_FONT_PX * k;
+    const real = fontPx >= REAL_TEXT_PX;
+
+    const lines = wrapLines(n.clip.id, n.clip.content || "", f.colChars);
+    const rec = tokenRecord(n.clip.id + ":" + f.colChars, cat.lang, lines);
+    this.stats.linesTotal += lines.length;
+
+    const firstVis = Math.max(0, Math.floor(-by / lineH));
+    const lastVis = Math.ceil((this.H - by) / lineH) + 1;
+    // Dashes are snapped to whole pixels. A 1-2px bar at a fractional y is all
+    // anti-aliased edge, and a card full of them reads as a grey smear rather
+    // than as the crisp lines the reference shows.
+    const barH = Math.max(1, Math.round(lineH * 0.5));
+    const barOff = Math.round((lineH - barH) / 2);
+    const paths = real ? null : new Map();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(bx, by, bw, bh);
+    ctx.clip();
+    if (real) {
+      ctx.font = (fontPx * this.monoFix).toFixed(2) + "px " + FONT_MONO;
+      ctx.textBaseline = "middle";
+    }
+
+    for (let c = 0; c < f.columns; c++) {
+      const cx = bx + c * (colW + gap);
+      if (cx > this.W || cx > bx + bw) break;
+      if (cx + colW < 0) continue;
+
+      const start = c * f.linesPerColumn;
+      if (start >= lines.length) break;
+      const end = Math.min(lines.length, start + f.linesPerColumn);
+      const from = start + firstVis;
+      const to = Math.min(end, start + lastVis);
+
+      for (let i = from; i < to; i++) {
+        const y = by + (i - start) * lineH;
+        this.stats.linesDrawn++;
+
+        if (real) {
+          const line = lines[i];
+          if (!line) continue;
+          if (cat.single != null) {
+            ctx.fillStyle = pal[cat.single];
+            ctx.fillText(line, cx, y + lineH / 2);
+          } else {
+            // Merge consecutive same-colour tokens -- and the spaces between
+            // them -- into one fillText. Monospace keeps every column aligned,
+            // and it cuts glyph calls several-fold: at clip zoom a card was
+            // spending ~2,300 fillText calls, one per token, 64ms a frame.
+            const r = runsAt(rec, i);
+            const ty = y + lineH / 2;
+            let a = 0;
+            while (a < r.length) {
+              const cls = r[a + 2];
+              let b = a;
+              while (b + 3 < r.length && r[b + 5] === cls) b += 3;
+              ctx.fillStyle = pal[cls];
+              ctx.fillText(line.slice(r[a], r[b + 1]), cx + r[a] * charW, ty);
+              a = b + 3;
+            }
+          }
+        } else {
+          const r = runsAt(rec, i);
+          const yy = Math.round(y) + barOff;
+          for (let t = 0; t < r.length; t += 3) {
+            const col = pal[r[t + 2]];
+            let p = paths.get(col);
+            if (!p) paths.set(col, (p = new Path2D()));
+            const x0 = Math.round(cx + r[t] * charW);
+            const x1 = Math.round(cx + r[t + 1] * charW);
+            p.rect(x0, yy, Math.max(1, x1 - x0 - (charW > 3 ? 1 : 0)), barH);
+          }
+        }
+      }
+    }
+
+    // One fill per colour, not one per dash.
+    if (paths) for (const [col, p] of paths) { ctx.fillStyle = col; ctx.fill(p); }
+    ctx.restore();
+    ctx.textBaseline = "top";
   }
 
   // ── Queries ────────────────────────────────────────────────────────────────
