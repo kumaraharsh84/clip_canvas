@@ -33,6 +33,7 @@
 
   let tc = null;
   let strip = null;
+  let selected = null;
   let selectedNode = null;
   let clips = [];
   let reloadTimer = null;
@@ -43,6 +44,7 @@
 
   async function init() {
     tc = mountTimeCanvas(el.stage, {
+      onSelect,
       onFrame,
       onHover: (node) => { hovered = node; scheduleInfo(); },
       // Assets are served by the clip-asset:// handler registered in main.js,
@@ -180,6 +182,57 @@
       `${s.textures} textures · lines ${s.linesDrawn}/${s.linesTotal}`;
   }
 
+  // ── Selection / details ────────────────────────────────────────────────────
+  async function onSelect(clip, node) {
+    selected = clip;
+    selectedNode = node || null;
+    scheduleInfo();
+    if (!clip) { el.details.hidden = true; return; }
+
+    el.details.hidden = false;
+    const d = node ? tc.describe(node) : null;
+    el.dType.textContent = d ? d.category : clip.type;
+    el.dType.style.color = d ? d.color : "";
+    el.dType.style.borderColor = d ? d.color + "66" : "";
+    el.dWhen.textContent = d ? d.when : "";
+    el.dTitle.value = clip.title || "";
+
+    el.dStar.classList.toggle("on", !!clip.is_starred);
+    el.dPin.classList.toggle("on", !!clip.is_pinned);
+    el.dArchive.classList.toggle("on", !!clip.is_archived);
+
+    const bytes = clip.file_size_bytes || (clip.content ? clip.content.length : 0);
+    el.dMeta.textContent =
+      `#${clip.id} · ${fmtBytes(bytes)} · ${clip.source || "clipboard"}` +
+      (clip.tags && clip.tags.length ? " · " + clip.tags.join(", ") : "");
+
+    if (clip.type === "image" && clip.asset_path) {
+      const img = document.createElement("img");
+      img.alt = "clip " + clip.id;
+      img.src = "clip-asset://" + String(clip.asset_path).replace(/\\/g, "/");
+      el.dBody.innerHTML = "";
+      el.dBody.appendChild(img);
+    } else {
+      let text = clip.content || "";
+      if (clip.content_length && text.length < clip.content_length) {
+        const full = await api.clips.content(clip.id);
+        text = (full && full.content) || text;
+      }
+      const pre = document.createElement("pre");
+      pre.textContent = text;
+      el.dBody.innerHTML = "";
+      el.dBody.appendChild(pre);
+    }
+  }
+
+  async function patchSelected(patch) {
+    if (!selected) return;
+    const updated = await api.clips.update(selected.id, patch);
+    Object.assign(selected, updated);
+    onSelect(selected, selectedNode);
+    scheduleReload();
+  }
+
   // ── Events ─────────────────────────────────────────────────────────────────
   function wireEvents() {
     el.workspace.addEventListener("change", async () => {
@@ -191,6 +244,25 @@
     el.filter.addEventListener("change", () => reload());
     el.reload.addEventListener("click", () => reload({ keepView: true }));
     el.fit.addEventListener("click", () => tc.fitAll(true));
+
+    el.dClose.addEventListener("click", () => deselect());
+    el.dTitle.addEventListener("change", () => patchSelected({ title: el.dTitle.value }));
+    el.dStar.addEventListener("click", () => patchSelected({ is_starred: selected.is_starred ? 0 : 1 }));
+    el.dPin.addEventListener("click", () => patchSelected({ is_pinned: selected.is_pinned ? 0 : 1 }));
+    el.dArchive.addEventListener("click", () => patchSelected({ is_archived: selected.is_archived ? 0 : 1 }));
+
+    el.dCopy.addEventListener("click", async () => {
+      if (!selected) return;
+      await api.clips.copyBack(selected.id);
+      flash(el.dCopy, "Copied");
+    });
+
+    el.dDelete.addEventListener("click", async () => {
+      if (!selected) return;
+      await api.clips.remove([selected.id]);
+      deselect();
+      reload({ keepView: true });
+    });
 
     // A new capture appears without being asked for, where it belongs in time.
     api.on("clip:added", scheduleReload);
@@ -206,13 +278,27 @@
     document.addEventListener("keydown", (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
       if (e.key === "Escape") {
+        if (!el.details.hidden) { deselect(); return; }
         if (!typing) api.window.hide();
         return;
       }
     });
   }
 
+  function deselect() {
+    tc.renderer.selectedKey = null;
+    tc.invalidate();
+    onSelect(null, null);
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
+  function fmtBytes(n) {
+    if (!n) return "0 B";
+    const u = ["B", "KB", "MB", "GB"];
+    const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+    return (n / Math.pow(1024, i)).toFixed(i ? 1 : 0) + " " + u[i];
+  }
+
   // Colours are set through CSSOM (element.style), never as style="..." in an
   // HTML string: the page's CSP is style-src 'self', which blocks inline style
   // attributes -- the legend and info-panel swatches rendered colourless until
@@ -237,6 +323,12 @@
   }
 
   function status(t) { el.status.textContent = t; }
+
+  function flash(btn, text) {
+    const old = btn.textContent;
+    btn.textContent = text;
+    setTimeout(() => { btn.textContent = old; }, 1100);
+  }
 
   function fatal(err) {
     console.error(err);
