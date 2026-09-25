@@ -48,6 +48,8 @@ const FONT_SCALE_FLOOR = 0.05;  // see clipWeight
 const CHROME_ALLOWANCE = 1.22;  // headers, padding and gaps across four levels
 const READABLE_PX = 7;          // body font size that counts as readable
 const SIBLING_FLOOR = 12;       // no box below 1/12 of its largest sibling
+const STRETCH_MAX = 2.5;        // children may fill at most 2.5x their natural area
+const NATURAL_SLACK = 1.2;      // natural area of a set of children, incl. their chrome
 
 const DEPTH = { YEAR: 0, MONTH: 1, DAY: 2, HOUR: 3, CLIP: 4 };
 
@@ -260,10 +262,35 @@ function layoutNode(n) {
   // containers the equivalent. Only the share of space changes, never the order.
   let maxW = 0;
   for (const kid of n.children) if (kid.weight > maxW) maxW = kid.weight;
-  for (const kid of n.children) kid.lw = Math.max(kid.weight, maxW / SIBLING_FLOOR);
+  let sumLW = 0;
+  for (const kid of n.children) {
+    kid.lw = Math.max(kid.weight, maxW / SIBLING_FLOOR);
+    sumLW += kid.lw;
+  }
 
-  stripLayout(n.children, inner, n.gap);
+  // The floor fixes a container's SHAPE, but if its children then stretched to
+  // fill the inflated box, a lone clip in a quiet hour became a giant card --
+  // measured: largest card 301x the median, the top 1% of cards owning 48% of
+  // the canvas. So children are laid out in a region at most STRETCH_MAX times
+  // their natural area, anchored top-left, and the rest stays empty. A quiet
+  // hour then LOOKS quiet, and every card stays mosaic-sized.
+  stripLayout(n.children, contentRegion(inner, sumLW * NATURAL_SLACK * STRETCH_MAX), n.gap);
   for (const kid of n.children) layoutNode(kid);
+}
+
+/**
+ * The part of `inner` children are laid out in: all of it, unless that is more
+ * than `maxArea`, in which case a top-left region of `maxArea` with a sane
+ * aspect ratio (so the cards inside are not stretched into slivers either).
+ */
+function contentRegion(inner, maxArea) {
+  if (inner.w * inner.h <= maxArea) return inner;
+  const aspect = Math.min(3, Math.max(1 / 3, inner.w / inner.h));
+  let w = Math.sqrt(maxArea * aspect);
+  let h = maxArea / w;
+  if (w > inner.w) { w = inner.w; h = maxArea / w; }
+  if (h > inner.h) { h = inner.h; w = Math.min(inner.w, maxArea / h); }
+  return { x: inner.x, y: inner.y, w, h };
 }
 
 /** A node's weight for the purpose of sharing space among its siblings. */
