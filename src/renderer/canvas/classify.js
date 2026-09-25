@@ -117,10 +117,104 @@ function detect(clip) {
   const trimmed = head.trim();
 
   if (clip.type === "url" || /^https?:\/\/\S+$/i.test(trimmed)) return CATEGORIES.url;
-  if (clip.type === "code") return CATEGORIES.code;
+  if (clip.type === "code") return CATEGORIES[detectLanguage(head)] || CATEGORIES.code;
 
   if (trimmed.length <= 80 && trimmed.indexOf("\n") === -1) return CATEGORIES.snippet;
   return CATEGORIES.prose;
+}
+
+// Weighted signals per language. A language needs a score of at least 2 to be
+// claimed; below that the clip is plain "Other code".
+const SIGNALS = {
+  sql: [
+    [3, /\bselect\b[\s\S]{0,600}?\bfrom\b/i],
+    [3, /\binsert\s+into\b/i],
+    [3, /\bupdate\s+[\w."`[\]]+\s+set\b/i],
+    [3, /\bdelete\s+from\b/i],
+    [3, /\bcreate\s+(?:virtual\s+)?(?:table|index|view|trigger)\b/i],
+    [1, /\b(?:where|inner\s+join|left\s+join|group\s+by|order\s+by)\b/i],
+  ],
+  py: [
+    [3, /^[ \t]*def\s+\w+\s*\(.*\)\s*(?:->\s*[^:\n]+)?:\s*$/m],
+    [3, /^[ \t]*class\s+\w+\s*(?:\([^)\n]*\))?\s*:\s*$/m],
+    [2, /^[ \t]*(?:from\s+[\w.]+\s+)?import\s+[\w.]+(?:\s+as\s+\w+)?(?:\s*,\s*[\w.]+)*\s*$/m],
+    [2, /\bself\.\w+/],
+    [2, /^[ \t]*elif\b/m],
+    [1, /\b(?:None|True|False)\b/],
+    [1, /^[ \t]*(?:if|for|while|with|try|except|else|finally)\b[^\n{;]*:\s*$/m],
+    [1, /__\w+__/],
+  ],
+  js: [
+    [2, /\b(?:const|let|var)\s+[\w${[]/],
+    [1, /=>/],
+    [1, /\bfunction\b/],
+    [2, /\brequire\s*\(|^[ \t]*import\s[^\n]*\sfrom\s+['"]|^[ \t]*import\s+['"]/m],
+    [2, /^[ \t]*export\s/m],
+    [2, /\b(?:console|document|window|module|process)\.\w/],
+    [2, /===|!==/],
+    [1, /;\s*$/m],
+    [1, /\b(?:async|await)\b/],
+    [1, /\b(?:interface|type)\s+\w+\s*(?:=|\{|<)/],
+  ],
+  css: [
+    // A rule block with a declaration in it. Written as a function rather than
+    // one regex: the obvious single regex backtracks quadratically on long
+    // brace-free input, and this runs on every code clip.
+    [3, (s) => {
+      if (/\b(?:function|return|const|let|var)\b/.test(s)) return false;
+      const m = s.match(/\{([^{}]{1,2000})\}/);
+      return !!m && /(?:^|[;\s])[\w-]+\s*:\s*[^;:{}]+;/.test(m[1]);
+    }],
+    [2, /@(?:media|import|keyframes|font-face|supports)\b/],
+    [1, /^[ \t]*[\w-]+\s*:\s*[^;{}\n]+;\s*$/m],
+    [1, /#[0-9a-fA-F]{3,8}\b/],
+  ],
+  shell: [
+    [2, /^[ \t]*(?:\$|>|PS\s+[A-Z]:\\[^>\n]*>)\s*\S/m],
+    [2, /^[ \t]*(?:sudo\s+)?(?:npm|npx|yarn|pnpm|git|cd|ls|dir|echo|apt(?:-get)?|brew|pip3?|python3?|node|docker|kubectl|curl|wget|mkdir|rm|cp|mv|cat|chmod|export|winget|choco|ssh|scp)\b/m],
+    [3, /\b(?:Get|Set|New|Remove|Start|Stop|Invoke)-[A-Z]\w+|\$env:\w+/],
+    [1, /\s--?[a-zA-Z][\w-]*/],
+    [1, /\|\s*\w|&&/],
+  ],
+  html: [
+    [3, /<!DOCTYPE|<\?xml/i],
+    [3, /<\/?(?:html|head|body|div|span|p|a|ul|ol|li|table|tr|td|th|script|style|section|header|footer|nav|main|button|input|form|img|svg|template|label|select|option)\b[^>]*>/i],
+    [1, /<\/[a-zA-Z][\w:-]*>/],
+  ],
+};
+const ORDER = ["sql", "py", "js", "css", "shell", "html"];
+
+function detectLanguage(src) {
+  return scoreLanguage(src).lang;
+}
+
+/**
+ * The best-scoring language and how strongly it scored. JSON and key/value
+ * config are structural checks and count as certain (score Infinity).
+ */
+function scoreLanguage(src) {
+  const s = src.length > 4000 ? src.slice(0, 4000) : src;
+  const t = s.trim();
+  if (!t) return { lang: "code", score: 0 };
+
+  // JSON, and key/value config (YAML, .env, ini) that reads like it.
+  if (/^[[{]/.test(t) && /"[^"\n]{1,120}"\s*:/.test(t)) return { lang: "json", score: Infinity };
+  const lines = t.split("\n").filter((l) => l.trim());
+  if (lines.length >= 2) {
+    const kv = lines.filter((l) => /^\s*[\w.-]+\s*[:=]\s*\S/.test(l) && !/[;{}()]/.test(l)).length;
+    if (kv / lines.length >= 0.75) return { lang: "json", score: Infinity };
+  }
+
+  let best = "code";
+  let bestScore = 1;
+  for (const lang of ORDER) {
+    let score = 0;
+    for (const [weight, test] of SIGNALS[lang]) {
+      if (typeof test === "function" ? test(s) : test.test(s)) score += weight;
+    }
+    if (score > bestScore) { best = lang; bestScore = score; }
+  }
+  return { lang: best, score: best === "code" ? 0 : bestScore };
 }
 
 /**
@@ -165,6 +259,6 @@ function hash01(v) {
 
 module.exports = {
   CATEGORIES, CATEGORY_LIST, TOKEN, BG,
-  categoryOf, blockOf,
+  categoryOf, blockOf, detectLanguage, scoreLanguage,
   mix, rgbCss, hexToRgb,
 };
