@@ -33,13 +33,18 @@
 
   let tc = null;
   let strip = null;
+  let selectedNode = null;
   let clips = [];
   let reloadTimer = null;
+  let infoRaf = null;
+  let hovered = null;
 
   init().catch(fatal);
 
   async function init() {
     tc = mountTimeCanvas(el.stage, {
+      onFrame,
+      onHover: (node) => { hovered = node; scheduleInfo(); },
       // Assets are served by the clip-asset:// handler registered in main.js,
       // which resolves only inside the storage folder.
       resolveImage: (clip) =>
@@ -103,6 +108,8 @@
         "<b>No clips here yet</b><div>Copy something — it lands on the timeline automatically.</div>";
     }
 
+    renderLegend();
+    scheduleInfo();
     status(`${clips.length.toLocaleString()} clips · fetch ${fetchMs | 0}ms · layout ${layoutMs | 0}ms`);
   }
 
@@ -110,6 +117,67 @@
   function scheduleReload() {
     clearTimeout(reloadTimer);
     reloadTimer = setTimeout(() => reload({ keepView: true }), 400);
+  }
+
+  // ── Info panel ─────────────────────────────────────────────────────────────
+  // Like the reference's side panel: where you are, and what is under the
+  // cursor. Falls back to the selection, then to the whole archive.
+  function scheduleInfo() {
+    if (infoRaf != null) return;
+    infoRaf = requestAnimationFrame(() => { infoRaf = null; renderInfo(); });
+  }
+
+  function renderInfo() {
+    // Under the cursor first, then the selection, then wherever the camera is.
+    const node = hovered || selectedNode || tc.framed() || tc.getTree();
+    const d = node ? tc.describe(node) : null;
+    if (!d) { el.infoPath.textContent = ""; el.infoTitle.textContent = ""; return; }
+
+    const path = d.path || [];
+    el.infoPath.innerHTML = path.length
+      ? path.map((p, i) => (i === path.length - 1 ? `<b>${esc(p)}</b>` : esc(p))).join(" › ")
+      : "<b>Everything</b>";
+
+    if (d.kind === "clip") {
+      el.infoTitle.textContent = "";
+      el.infoTitle.append(swatch(d.color), " " + d.title);
+      const lines = [d.when];
+      if (d.chars != null) {
+        lines.push(`${d.chars.toLocaleString()} chars · ${d.lines.toLocaleString()} lines` +
+                   (d.columns > 1 ? ` · ${d.columns} columns` : ""));
+        lines.push(d.textScale >= 0.999
+          ? "text at full size"
+          : `text at ${(d.textScale * 100).toFixed(0)}% — readable from ${d.readableAt.toFixed(1)}× zoom`);
+      } else {
+        lines.push("image");
+      }
+      el.infoMeta.textContent = lines.join("\n");
+      el.infoCats.innerHTML = "";
+    } else {
+      el.infoTitle.textContent = d.title || "All clips";
+      el.infoMeta.textContent =
+        `${d.count.toLocaleString()} ${d.count === 1 ? "clip" : "clips"}` + (d.span ? `\n${d.span}` : "");
+      el.infoCats.replaceChildren(...d.categories.slice(0, 6).map((c) =>
+        h("div", "row", swatch(c.color), c.label, h("span", "n", String(c.count)))));
+    }
+  }
+
+  function renderLegend() {
+    const root = tc.getTree();
+    const cats = root && root.cats ? root.cats : {};
+    const byId = tc.categoryById;
+    el.legend.replaceChildren(...Object.entries(cats)
+      .sort((a, b) => b[1] - a[1])
+      .map(([id, n]) => h("span", "chip", swatch(byId[id].ink), byId[id].label + " ", h("span", "n", String(n)))));
+
+    el.legend.hidden = !Object.keys(cats).length;
+  }
+
+  function onFrame(s) {
+    if (!hovered && !selectedNode) scheduleInfo(); // the camera moved
+    el.hud.textContent =
+      `draw ${s.ms.toFixed(1)} ms · ${s.level} ${s.zoomLabel} · ${s.cards} cards · ` +
+      `${s.textures} textures · lines ${s.linesDrawn}/${s.linesTotal}`;
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────
@@ -145,6 +213,24 @@
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+  // Colours are set through CSSOM (element.style), never as style="..." in an
+  // HTML string: the page's CSP is style-src 'self', which blocks inline style
+  // attributes -- the legend and info-panel swatches rendered colourless until
+  // this was changed. CSSOM writes are not affected by style-src.
+  function swatch(color) {
+    const sw = document.createElement("span");
+    sw.className = "sw";
+    sw.style.background = color;
+    return sw;
+  }
+
+  function h(tag, cls, ...kids) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    e.append(...kids);
+    return e;
+  }
+
   function esc(s) {
     return String(s).replace(/[&<>"]/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
