@@ -124,7 +124,8 @@ function detect(clip) {
     // "Other code", JSON or SQL. The order below is what fixed them:
     //   1. a terminal session is Shell, whatever it quotes
     //   2. otherwise, text that reads as prose is prose -- even if it mentions
-    //      a command or keyword, which is all it took to win the language vote
+    //      a command or keyword, which is all it took to win the language vote --
+    //      unless it starts the way a source file does
     //   3. otherwise, detect the language
     if (looksLikeTerminal(head)) return CATEGORIES.shell;
     const lang = scoreLanguage(head);
@@ -132,7 +133,7 @@ function detect(clip) {
     // so they are certain -- and "name: demo" lines would otherwise read as
     // short prose.
     if (lang.score === Infinity) return CATEGORIES[lang.lang];
-    if (looksLikeProse(head)) {
+    if (!startsLikeSource(head) && looksLikeProse(head)) {
       return CATEGORIES.prose;
     }
     return CATEGORIES[lang.lang] || CATEGORIES.code;
@@ -281,6 +282,19 @@ function looksLikeTerminal(src) {
   return n / lines.length >= 0.3;
 }
 
+/**
+ * Starts the way a source file does. Such a clip is never prose, however many
+ * comments it has: a Python module whose "# =====" banners are most of its
+ * symbols otherwise reads as prose once those banners are discounted.
+ * Case-sensitive on purpose -- prose that begins "Import the data..." is prose.
+ */
+const SOURCE_START = /^\s*(?:import\s+[\w.*{]|from\s+[\w.]+\s+import\s|def\s+\w+\s*\(|class\s+\w+\s*[:({]|(?:export\s+)?(?:default\s+)?(?:const|let|var|function|async\s+function)\s|#include\s*[<"]|package\s+[\w.]+|using\s+[\w.]+\s*;|<\?php|#!\/|["']use strict["'])/;
+
+function startsLikeSource(src) {
+  const first = src.split("\n").find((l) => l.trim());
+  return !!first && SOURCE_START.test(first);
+}
+
 // ── Prose ────────────────────────────────────────────────────────────────────
 // Language-agnostic on purpose. A test built on English function words scores
 // a Hinglish message ("Theek hai, seedha jawab: ...") at zero, and that is a
@@ -402,6 +416,6 @@ function hash01(v) {
 module.exports = {
   CATEGORIES, CATEGORY_LIST, TOKEN, BG,
   categoryOf, blockOf, detectLanguage, scoreLanguage,
-  looksLikeTerminal, looksLikeProse, proseStats,
+  looksLikeTerminal, looksLikeProse, startsLikeSource, proseStats,
   mix, rgbCss, hexToRgb,
 };
