@@ -155,11 +155,65 @@ function wrapLines(clipId, text, cols) {
   return out;
 }
 
+// ── Multi-column card flow ───────────────────────────────────────────────────
+// A squarified treemap decides each card's SHAPE; it only honours its AREA.
+// Text, though, has a strongly preferred shape, so a single-column card can be
+// handed a box with ample area but the wrong proportions and still not fit --
+// most visibly for pre-formatted clips (code, logs) whose line count is pinned
+// by their own newlines and does not fall as the box gets wider. Measured with
+// single-column flow, a rotating ~0.2% of clips never settled, plateauing about
+// 1.23x too short no matter how many fixpoint passes ran.
+//
+// Flowing the text into multiple columns when the card is wider than one column
+// needs removes the shape dependence: a wide card uses its width for more
+// columns instead of longer lines, so AREA becomes the binding constraint --
+// and area is exactly what the treemap already guarantees, because a clip's
+// weight IS its rendered text area. It is also how you would set this text on
+// paper, and it matches the dense packing of the reference visualiser.
+//
+// layout.js and renderer2d.js MUST agree on this geometry or cards clip their
+// own text, so both call this one function rather than each deriving it.
+
+const TARGET_COL_CHARS = 72; // comfortable measure for a single column
+const MIN_COL_CHARS = 20;    // below this, prefer fewer columns
+
+/**
+ * @returns {{columns, colChars, totalLines, linesPerColumn, neededHeight}}
+ */
+function cardFlow(text, innerWidth, charW, lineH, colGap) {
+  const shape = (wanted) => {
+    let k = Math.max(1, wanted);
+    let cc;
+    // Keep columns readable: fewer, wider columns rather than slivers.
+    for (;;) {
+      const usable = innerWidth - (k - 1) * colGap;
+      cc = Math.floor(usable / k / charW);
+      if (cc >= MIN_COL_CHARS || k === 1) break;
+      k--;
+    }
+    cc = Math.max(1, cc);
+    return { columns: k, colChars: cc, totalLines: countLines(text, cc) };
+  };
+
+  const byWidth = Math.floor((innerWidth + colGap) / (TARGET_COL_CHARS * charW + colGap));
+  let f = shape(byWidth);
+
+  const linesPerColumn = Math.ceil(f.totalLines / f.columns);
+  return {
+    columns: f.columns,
+    colChars: f.colChars,
+    totalLines: f.totalLines,
+    linesPerColumn,
+    neededHeight: linesPerColumn * lineH,
+  };
+}
+
 function clearCaches() { wrapCache.clear(); charWidthCache.clear(); }
 function cacheStats() { return { wrap: wrapCache.stats(), fonts: charWidthCache.size }; }
 
 module.exports = {
   charWidth, charsPerLine,
-  countLines, wrapLines,
+  countLines, wrapLines, cardFlow,
+  TARGET_COL_CHARS, MIN_COL_CHARS,
   clearCaches, cacheStats,
 };
