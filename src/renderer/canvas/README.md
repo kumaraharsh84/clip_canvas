@@ -29,3 +29,32 @@ level, you fly into it.
 | `viewport.js` · `lod.js` · `lru.js` | Transform, level names, caches |
 | `index.js` | `mountTimeCanvas()` + the dirty-driven frame loop |
 | `build.js` | Bundles all of it into one browser-loadable file |
+
+## How it gets the look
+
+**Box size is decoupled from text size.** A card's area grows with the square
+root of its length, clamped to 0.35–8× a typical card, and each card then picks
+its own font scale so its whole text fits (`fitCard`). The earlier rule — area
+equals text area — gave one 38k-character paste 8% of the canvas; now the
+largest card is well under 1%.
+
+**Four detail levels per card.** A few pixels: a solid tile in the category
+colour. Tens of pixels: a cached texture of coloured dashes. Lines ≥ 2.4 px:
+dashes drawn live. Font ≥ 6.5 px: real syntax-coloured glyphs. Dashes are
+snapped to whole pixels so they stay crisp.
+
+**Order-preserving layout without slivers.** A strip treemap keeps time order.
+Three rules keep its boxes a readable shape:
+
+- strips grow by the *worst* box aspect, not the mean (the mean let 1-unit-wide
+  slivers through);
+- each box is floored at 1/12 of its largest sibling, so a quiet hour next to a
+  busy one is not a sliver;
+- a floored box lays its children out at natural size, anchored top-left, rather
+  than stretching one lone clip into a giant card — a quiet hour *looks* quiet.
+
+**Columns stay readable.** Text flows into columns at least 12 lines tall and
+20–120 characters wide; the font shrinks rather than break those limits.
+
+**Every clip is readable, not just present.** The viewport's maximum zoom is
+set from the smallest text on the canvas, so any clip can be zoomed to ≥ 7 px.
