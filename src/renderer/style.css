@@ -145,3 +145,48 @@ button.on { border-color: var(--ok); color: var(--ok); }
   font-size: 10px;
   color: #5d7287;
 }
+
+/* ── Legend ────────────────────────────────────────────────────────────────── */
+#legend {
+  position: absolute;
+  left: 10px;
+  bottom: calc(var(--timeline-h) + 8px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  max-width: 55%;
+  padding: 5px 9px;
+  background: #0e1319d9;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  pointer-events: none;
+  font: 11px var(--mono);
+  color: var(--dim);
+}
+#legend .chip { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+#legend .sw { width: 9px; height: 9px; border-radius: 2px; }
+#legend .n { color: var(--ink); }
+
+/* ── Timeline strip ────────────────────────────────────────────────────────── */
+#timeline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--timeline-h);
+  border-top: 1px solid var(--edge);
+  background: var(--bg);
+}
+
+.timeline-tip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  padding: 3px 8px;
+  background: #0e1319f2;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  font: 11px var(--mono);
+  color: var(--ink);
+  white-space: nowrap;
+  pointer-events: none;
+}
