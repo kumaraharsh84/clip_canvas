@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ClipCanvas Time Canvas</title>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #121820; --edge: #26323d;
+    --ink: #c9d6e0; --dim: #7d93a6; --accent: #6fa8dc;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --timeline-h: 58px;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 13px system-ui, "Segoe UI", sans-serif;
+    display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+  }
+  header {
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+    padding: 7px 12px; background: var(--panel); border-bottom: 1px solid var(--edge);
+  }
+  h1 { font-size: 13px; font-weight: 600; margin: 0 8px 0 0; }
+  label { color: var(--dim); display: flex; align-items: center; gap: 5px; }
+  select, button {
+    background: #1a222c; color: var(--ink); border: 1px solid var(--edge);
+    border-radius: 4px; padding: 4px 9px; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  #buildinfo { color: var(--dim); font: 11px var(--mono); }
+  #stage { position: relative; min-height: 0; }
+  #host { position: absolute; inset: 0 0 var(--timeline-h) 0; }
+  #timeline {
+    position: absolute; left: 0; right: 0; bottom: 0; height: var(--timeline-h);
+    border-top: 1px solid var(--edge);
+  }
+  .timeline-tip {
+    position: absolute; bottom: calc(100% + 4px); padding: 3px 8px;
+    background: #0e1319f2; border: 1px solid var(--edge); border-radius: 4px;
+    font: 11px var(--mono); white-space: nowrap; pointer-events: none;
+  }
+  #info {
+    position: absolute; top: 8px; right: 10px; width: 280px; padding: 9px 11px 8px;
+    background: #0e1319e6; border: 1px solid var(--edge); border-radius: 6px;
+    pointer-events: none; font: 11px/1.55 var(--mono); color: var(--dim);
+  }
+  #info-title { color: var(--ink); font: 600 13px/1.4 system-ui, sans-serif; margin: 3px 0 2px; }
+  #info-meta { white-space: pre-line; }
+  #info .row { display: flex; align-items: center; gap: 6px; }
+  #info .n { margin-left: auto; color: var(--ink); }
+  .sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex: none; }
+  #hud { margin-top: 6px; padding-top: 5px; border-top: 1px solid #1f2a35; font-size: 10px; color: #5d7287; }
+  #legend {
+    position: absolute; left: 10px; bottom: calc(var(--timeline-h) + 8px);
+    display: flex; flex-wrap: wrap; gap: 4px 10px; max-width: 60%;
+    padding: 5px 9px; background: #0e1319d9; border: 1px solid var(--edge); border-radius: 6px;
+    pointer-events: none; font: 11px var(--mono); color: var(--dim);
+  }
+  #legend span { display: inline-flex; align-items: center; gap: 5px; }
+  #hint {
+    position: absolute; left: 10px; top: 7px; pointer-events: none;
+    font: 11px var(--mono); color: var(--dim); text-shadow: 0 1px 2px #000;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>ClipCanvas · Time Canvas</h1>
+  <label>clips
+    <select id="count">
+      <option>500</option>
+      <option selected>2000</option>
+      <option>10000</option>
+      <option>40000</option>
+    </select>
+  </label>
+  <button id="regen">regenerate</button>
+  <button id="fit">fit (F)</button>
+  <span id="buildinfo"></span>
+</header>
+
+<div id="stage">
+  <div id="host"></div>
+  <div id="hint">scroll zoom · drag pan · double-click fly in · right-click fly out · F fit</div>
+  <aside id="info">
+    <div id="info-path"></div>
+    <div id="info-title"></div>
+    <div id="info-meta"></div>
+    <div id="info-cats"></div>
+    <div id="hud"></div>
+  </aside>
+  <div id="legend"></div>
+  <div id="timeline"></div>
+</div>
+
+<script src="timecanvas.bundle.js"></script>
+<script src="mockdata.js"></script>
+<script>
+(function () {
+  const { mountTimeCanvas, mountTimelineStrip } = window.ClipCanvasTimeCanvas;
+  const $ = (id) => document.getElementById(id);
+  let tc = null;
+  let strip = null;
+  let hovered = null;
+  let infoRaf = null;
+
+  const swatch = (color) => {
+    const s = document.createElement("span");
+    s.className = "sw";
+    s.style.background = color;
+    return s;
+  };
+  const el = (tag, cls, ...kids) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    e.append(...kids);
+    return e;
+  };
+
+  function scheduleInfo() {
+    if (infoRaf != null) return;
+    infoRaf = requestAnimationFrame(() => { infoRaf = null; renderInfo(); });
+  }
+
+  function renderInfo() {
+    const d = tc.describe(hovered || tc.framed() || tc.getTree());
+    if (!d) return;
+    $("info-path").textContent = d.path.length ? d.path.join(" › ") : "Everything";
+    if (d.kind === "clip") {
+      $("info-title").replaceChildren(swatch(d.color), " " + d.title);
+      $("info-meta").textContent = [
+        d.when,
+        d.chars != null ? `${d.chars.toLocaleString()} chars · ${d.lines} lines` +
+          (d.columns > 1 ? ` · ${d.columns} columns` : "") : "image",
+        d.textScale != null && d.textScale < 0.999
+          ? `text at ${(d.textScale * 100).toFixed(0)}% — readable from ${d.readableAt.toFixed(1)}× zoom` : "",
+      ].filter(Boolean).join("\n");
+      $("info-cats").replaceChildren();
+    } else {
+      $("info-title").textContent = d.title;
+      $("info-meta").textContent = `${d.count.toLocaleString()} clips` + (d.span ? "\n" + d.span : "");
+      $("info-cats").replaceChildren(...d.categories.slice(0, 6).map((c) =>
+        el("div", "row", swatch(c.color), c.label, el("span", "n", String(c.count)))));
+    }
+  }
+
+  function renderLegend() {
+    const cats = tc.getTree().cats || {};
+    $("legend").replaceChildren(...Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([id, n]) =>
+      el("span", "", swatch(tc.categoryById[id].ink), `${tc.categoryById[id].label} ${n}`)));
+  }
+
+  function build() {
+    const n = Number($("count").value);
+    if (strip) strip.destroy();
+    if (tc) tc.destroy();
+
+    const t0 = performance.now();
+    const clips = window.makeMockClips(n);
+    const genMs = performance.now() - t0;
+
+    tc = mountTimeCanvas($("host"), {
+      onHover: (node) => { hovered = node; scheduleInfo(); },
+      onFrame: (s) => {
+        if (!hovered) scheduleInfo();
+        $("hud").textContent = `draw ${s.ms.toFixed(1)} ms · ${s.level} ${s.zoomLabel} · ` +
+          `${s.cards} cards · ${s.textures} textures · lines ${s.linesDrawn}/${s.linesTotal}`;
+      },
+      resolveImage: (clip) => clip.content,   // mock images are data URLs
+    });
+    strip = mountTimelineStrip($("timeline"), tc);
+
+    const t1 = performance.now();
+    const info = tc.setClips(clips);
+    const layoutMs = performance.now() - t1;
+
+    $("buildinfo").textContent =
+      `${n.toLocaleString()} clips · gen ${genMs.toFixed(0)}ms · layout ${layoutMs.toFixed(0)}ms · ` +
+      `smallest text ${(info.minFontScale * 100).toFixed(0)}% · max zoom ${info.maxZoom.toFixed(0)}×`;
+    renderLegend();
+    renderInfo();
+    window.__tc = tc; // for headless checks
+  }
+
+  $("regen").onclick = build;
+  $("fit").onclick = () => tc && tc.fitAll(true);
+  $("count").onchange = build;
+  build();
+})();
+</script>
+</body>
+</html>
