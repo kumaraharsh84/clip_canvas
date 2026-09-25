@@ -225,12 +225,92 @@ function cardFlow(text, innerWidth, charW, lineH, colGap) {
   };
 }
 
+/** Length of the longest hard line, in characters. */
+function longestLine(text) {
+  let best = 0;
+  let start = 0;
+  for (;;) {
+    const nl = text.indexOf("\n", start);
+    const end = nl === -1 ? text.length : nl;
+    if (end - start > best) best = end - start;
+    if (nl === -1) break;
+    start = nl + 1;
+  }
+  return Math.max(1, best);
+}
+
+// ── Per-card font fitting ────────────────────────────────────────────────────
+// The first version sized every BOX to fit its text at one fixed font size.
+// That guaranteed no clip was ever truncated, but it meant box area was
+// proportional to text length -- and on real data one 38,314-character paste
+// took 8% of the entire canvas while the smallest half of all clips shared
+// 1.9%. The archive read as a few huge slabs, nothing like the reference.
+//
+// The reference does it the other way round: the box comes from the layout,
+// and the TEXT shrinks to fit the box. A big file's code is microscopic until
+// you fly into it. fitCard() is that: the largest font scale at which the
+// whole clip still fits its card, flowing into as many columns as the width
+// allows. Nothing is truncated -- it is all there, it is just small until you
+// zoom -- and box size is free to be chosen for the look of the mosaic.
+
+/**
+ * @returns {{scale, fits, columns, colChars, totalLines, linesPerColumn, neededHeight}}
+ *          geometry in the same units as innerW/innerH, at font scale `scale`
+ */
+function fitCard(text, innerW, innerH, charW, lineH, colGap, minScale = 0.0005) {
+  const src = text || "";
+  const flowAt = (s) => cardFlow(src, innerW, charW * s, lineH * s, colGap * s);
+  const fitsAt = (s) => flowAt(s).neededHeight <= innerH * (1 + 1e-9);
+
+  if (!(innerW > 0) || !(innerH > 0)) {
+    return { scale: minScale, fits: false, ...flowAt(minScale) };
+  }
+  // Fitting is not enough on its own: a short clip in a tall, thin card fits at
+  // full size wrapped every 4 characters. Cap the scale so a line holds at
+  // least MIN_COL_CHARS characters (or the whole longest line, if shorter).
+  const minChars = Math.min(MIN_COL_CHARS, longestLine(src));
+  const sCap = Math.min(1, Math.max(minScale, innerW / (minChars * charW)));
+
+  if (sCap >= 1 && fitsAt(1)) return { scale: 1, fits: true, ...flowAt(1) };
+  if (fitsAt(sCap)) {
+    if (sCap >= 1) return { scale: 1, fits: true, ...flowAt(1) };
+    // largest fitting scale is at or above the cap -> the cap wins
+    return { scale: sCap, fits: true, ...flowAt(sCap) };
+  }
+
+  // Area says the text needs about len * charW * lineH * s^2. Start there and
+  // bracket, because ragged line ends and hard newlines make the real answer
+  // somewhat smaller -- then bisect in log space to within 2%.
+  const need = Math.max(1, src.length) * charW * lineH;
+  let s = Math.min(sCap, Math.max(minScale, Math.sqrt((innerW * innerH) / need)));
+  let lo;
+  let hi;
+
+  if (fitsAt(s)) {
+    lo = s;
+    hi = Math.min(sCap, s * 1.5);
+    while (hi < sCap && fitsAt(hi)) { lo = hi; hi = Math.min(sCap, hi * 1.5); }
+  } else {
+    hi = s;
+    lo = Math.max(minScale, s / 1.5);
+    while (lo > minScale && !fitsAt(lo)) { hi = lo; lo = Math.max(minScale, lo / 1.5); }
+    if (!fitsAt(lo)) return { scale: minScale, fits: false, ...flowAt(minScale) };
+  }
+
+  for (let k = 0; k < 24 && hi / lo > 1.02; k++) {
+    const mid = Math.sqrt(lo * hi);
+    if (fitsAt(mid)) lo = mid; else hi = mid;
+  }
+  // `lo` has been verified to fit; return its exact geometry.
+  return { scale: lo, fits: true, ...flowAt(lo) };
+}
+
 function clearCaches() { wrapCache.clear(); charWidthCache.clear(); }
 function cacheStats() { return { wrap: wrapCache.stats(), fonts: charWidthCache.size }; }
 
 module.exports = {
   charWidth, charsPerLine,
-  countLines, wrapLines, cardFlow,
+  countLines, wrapLines, cardFlow, fitCard,
   TARGET_COL_CHARS, MIN_COL_CHARS, MIN_LINES_PER_COL, MAX_COL_CHARS,
   clearCaches, cacheStats,
 };
