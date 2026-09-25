@@ -22,6 +22,8 @@ const WHEEL_K = 0.0017;      // zoom per pixel of wheel delta
 const PINCH_K = 0.012;       // trackpad pinch arrives as ctrl+wheel, in small deltas
 const ZOOM_EASE = 0.3;       // share of the remaining (log) distance covered per frame
 const INERTIA_DECAY = 0.92;  // velocity kept per 16ms after a fling
+const KEY_ZOOM = 1.6;
+const KEY_PAN = 0.18;        // share of the viewport per arrow press
 
 class Controls {
   /**
@@ -57,6 +59,7 @@ class Controls {
     this._up = (e) => this.onUp(e);
     this._leave = () => this.onLeave();
     this._menu = (e) => { e.preventDefault(); this.flyOut(this.local(e)); };
+    this._key = (e) => this.onKey(e);
 
     c.addEventListener("wheel", this._wheel, { passive: false });
     c.addEventListener("pointerdown", this._down);
@@ -64,6 +67,7 @@ class Controls {
     c.addEventListener("contextmenu", this._menu);
     window.addEventListener("pointermove", this._move);
     window.addEventListener("pointerup", this._up);
+    window.addEventListener("keydown", this._key);
   }
 
   destroy() {
@@ -74,6 +78,7 @@ class Controls {
     c.removeEventListener("contextmenu", this._menu);
     window.removeEventListener("pointermove", this._move);
     window.removeEventListener("pointerup", this._up);
+    window.removeEventListener("keydown", this._key);
     this.stopAll();
   }
 
@@ -217,6 +222,36 @@ class Controls {
   onLeave() {
     this.lastPointer = null;
     if (this.hooks.onHover) this.hooks.onHover(null);
+  }
+
+  // ── Keyboard ───────────────────────────────────────────────────────────────
+  onKey(e) {
+    const t = e.target;
+    if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    const center = { x: this.vp.width / 2, y: this.vp.height / 2 };
+    switch (e.key) {
+      case "f": case "F": case "Home": {
+        const tree = this.tree();
+        if (tree) this.fit(tree);
+        break;
+      }
+      case "+": case "=": this.zoomToward(KEY_ZOOM, center); break;
+      case "-": case "_": this.zoomToward(1 / KEY_ZOOM, center); break;
+      case "ArrowLeft": this.panAnimated(this.vp.width * KEY_PAN, 0); break;
+      case "ArrowRight": this.panAnimated(-this.vp.width * KEY_PAN, 0); break;
+      case "ArrowUp": this.panAnimated(0, this.vp.height * KEY_PAN); break;
+      case "ArrowDown": this.panAnimated(0, -this.vp.height * KEY_PAN); break;
+      case "Backspace": this.flyOut(); break;
+      default: return;
+    }
+    e.preventDefault();
+  }
+
+  panAnimated(dx, dy) {
+    const s = this.vp.scale;
+    this.animateTo(() => ({ x: this.vp.x - dx / s, y: this.vp.y - dy / s, scale: s }), 220);
   }
 
   // ── Camera moves ───────────────────────────────────────────────────────────
