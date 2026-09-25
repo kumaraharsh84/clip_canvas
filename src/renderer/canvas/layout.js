@@ -29,6 +29,22 @@
 //    at some zoom level rather than merely present.
 // ─────────────────────────────────────────────────────────────────────────────
 
+const { categoryOf } = require("./classify");
+
+// Text metrics at font scale 1, in world units. Monospace: see textlayout.js.
+const CARD_FONT_PX = 12;
+const CARD_LINE_H = 16;
+const CARD_CHAR_W = CARD_FONT_PX * 0.6;
+const COL_GAP = 10;
+
+// Card sizing.
+const BASE_AREA = 260 * 190;    // world area of a typical clip
+const TYPICAL_CHARS = 600;      // length that gets exactly BASE_AREA
+const MIN_FACTOR = 0.35;        // a one-word clip is still a visible tile
+const MAX_FACTOR = 8;           // no clip may dominate the canvas
+const IMAGE_FACTOR = 1.15;
+const FONT_SCALE_FLOOR = 0.05;  // see clipWeight
+
 const DEPTH = { YEAR: 0, MONTH: 1, DAY: 2, HOUR: 3, CLIP: 4 };
 
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -37,6 +53,30 @@ const MONTH_LONG = ["January", "February", "March", "April", "May", "June", "Jul
                     "August", "September", "October", "November", "December"];
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAY_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+// ── Card size ────────────────────────────────────────────────────────────────
+/**
+ * How much canvas a clip gets.
+ *
+ * Grows with the square root of its length, clamped to [0.35, 8] x a typical
+ * card, so length stays visible without any clip swallowing the canvas.
+ *
+ * One exception, the readability floor: a card is never made so small that its
+ * text would have to shrink below FONT_SCALE_FLOOR to fit. Without it a
+ * megabyte paste compressed to 8x a typical card would need its text drawn at
+ * ~1% size, readable only at a zoom level nobody reaches.
+ */
+function clipWeight(clip, cat) {
+  const c = cat || categoryOf(clip);
+  if (clip.type === "image" || c.id === "image") return BASE_AREA * IMAGE_FACTOR;
+
+  const len = Math.max(1, (clip.content || "").length);
+  const factor = Math.min(MAX_FACTOR, Math.max(MIN_FACTOR, Math.sqrt(len / TYPICAL_CHARS)));
+  const compressed = BASE_AREA * factor;
+  // 1.6 covers the card's own header, padding and ragged line ends.
+  const floor = len * CARD_CHAR_W * CARD_LINE_H * FONT_SCALE_FLOOR * FONT_SCALE_FLOOR * 1.6;
+  return Math.max(compressed, floor);
+}
 
 // ── Time helpers ─────────────────────────────────────────────────────────────
 /**
@@ -108,7 +148,9 @@ function hourKey(date) {
 }
 
 module.exports = {
-  DEPTH,
+  clipWeight,
+  DEPTH, CARD_FONT_PX, CARD_LINE_H, CARD_CHAR_W, COL_GAP,
+  BASE_AREA, MIN_FACTOR, MAX_FACTOR, FONT_SCALE_FLOOR,
   MONTH_SHORT, MONTH_LONG, WEEKDAY_SHORT,
   toDate, clockLabel, hourLabel, dayLabel, hourKey,
 };
