@@ -47,6 +47,7 @@ const IMAGE_FACTOR = 1.15;
 const FONT_SCALE_FLOOR = 0.05;  // see clipWeight
 const CHROME_ALLOWANCE = 1.22;  // headers, padding and gaps across four levels
 const READABLE_PX = 7;          // body font size that counts as readable
+const SIBLING_FLOOR = 12;       // no box below 1/12 of its largest sibling
 
 const DEPTH = { YEAR: 0, MONTH: 1, DAY: 2, HOUR: 3, CLIP: 4 };
 
@@ -251,6 +252,15 @@ function layoutNode(n) {
   }
 
   if (!n.children.length) return;
+
+  // Floor each child at 1/SIBLING_FLOOR of its largest sibling. Hours differ
+  // wildly -- a one-clip hour beside a hundred-clip hour is a 300:1 ratio -- and
+  // in a layout that may not reorder, a tiny box between two huge ones is always
+  // a sliver. Clip weights are already clamped for the same reason; this gives
+  // containers the equivalent. Only the share of space changes, never the order.
+  let maxW = 0;
+  for (const kid of n.children) if (kid.weight > maxW) maxW = kid.weight;
+  for (const kid of n.children) kid.lw = Math.max(kid.weight, maxW / SIBLING_FLOOR);
 
   stripLayout(n.children, inner, n.gap);
   for (const kid of n.children) layoutNode(kid);
