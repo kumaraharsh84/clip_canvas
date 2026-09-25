@@ -294,8 +294,22 @@ const NEUTRAL_TOKEN = /^(?:[-*•>|→—–]+|#{1,6}|\d{1,3}[.)])$/;
 // A word in any script, allowing quotes, markdown emphasis and trailing punctuation.
 const WORD_TOKEN = /^[("'*_`[]*\p{L}[\p{L}\p{M}'’-]*[)"'*_`\].,!?:;]*$/u;
 
+// Markdown table rows and separator rows, and runs of 3+ identical decoration
+// characters (===== dividers, ----- rules). Layout, not code: plain-text
+// reports divide sections with ===== lines -- 400 to 1,200 "=" per clip in real
+// history -- which alone made prose reports read as denser in symbols than
+// most real source files.
+const TABLE_SEPARATOR = /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/;
+const TABLE_ROW = /^\s*\|.*\|\s*$/;
+const DECORATION_RUN = /([=\-*_~#─━])\1{2,}/g;
+
 function proseStats(src) {
-  const s = src.length > 6000 ? src.slice(0, 6000) : src;
+  const raw = src.length > 6000 ? src.slice(0, 6000) : src;
+  const s = raw.split("\n")
+    .filter((l) => !TABLE_SEPARATOR.test(l))
+    .map((l) => (TABLE_ROW.test(l) ? l.replace(/\|/g, " ") : l))
+    .join("\n")
+    .replace(DECORATION_RUN, " ");
 
   const symbols = (s.match(/[{}[\]();=<>|&\\$^~]/g) || []).length;
   let words = 0;
