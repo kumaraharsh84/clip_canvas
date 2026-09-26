@@ -63,6 +63,13 @@ function start() {
   db = new ClipDatabase(path.join(userData, "clipcanvas.db"), storageDir);
   settings = new Settings(path.join(userData, "settings.json"), { capturePaused: false });
 
+  // Start with Windows by default (the planning decision), once; after that
+  // the tray checkbox decides. Re-registered on every launch so the entry
+  // follows the app if its folder moves -- the old Startup-folder .vbs
+  // hard-coded a path, and silently stopped working when the project moved.
+  if (settings.get("autoStart") === undefined && !IS_DEV) settings.set("autoStart", true);
+  applyAutoStart(!!settings.get("autoStart"));
+
   const ws = db.listWorkspaces();
   activeWorkspaceId = (ws.find((w) => w.is_default) || ws[0] || {}).id || null;
 
@@ -134,6 +141,8 @@ function updateTray() {
     { label: "Open ClipCanvas", click: showPanel },
     { type: "separator" },
     { label: "Pause capture", type: "checkbox", checked: paused, click: (item) => setPaused(item.checked) },
+    { label: "Start with Windows", type: "checkbox", checked: !!settings.get("autoStart"),
+      click: (item) => { settings.set("autoStart", item.checked); applyAutoStart(item.checked); } },
     { type: "separator" },
     { label: "Open storage folder", click: () => shell.openPath(storageDir) },
     { type: "separator" },
@@ -146,6 +155,22 @@ function setPaused(paused) {
   if (watcher) watcher.setPaused(!!paused);
   updateTray();
   broadcast("capture:changed", { paused: !!paused });
+}
+
+/**
+ * Register (or remove) the "run at login" entry. Measured quirks of
+ * setLoginItemSettings on Windows: it strips backslashes from `args` and does
+ * not quote `path`. So the app folder is passed with forward slashes, and
+ * anything containing a space is quoted here.
+ */
+function applyAutoStart(enabled) {
+  try {
+    const quote = (s) => (/\s/.test(s) ? `"${s}"` : s);
+    const args = app.isPackaged ? [] : [quote(app.getAppPath().replace(/\\/g, "/"))];
+    app.setLoginItemSettings({ openAtLogin: enabled, path: quote(process.execPath), args, name: "ClipCanvas" });
+  } catch (err) {
+    console.error("[clipcanvas] could not update start-with-Windows:", err.message);
+  }
 }
 
 /**
