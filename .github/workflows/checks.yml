@@ -1,0 +1,28 @@
+name: checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      # These load the canvas modules straight from src/, so they need no
+      # npm install -- and so no Electron download and no native rebuild.
+      - name: Classification regression suite
+        run: node scratch/verify-classify.js
+
+      - name: Time canvas layout invariants
+        run: node scratch/verify-timecanvas-2d.js --clips=20000
+
+      - name: Committed bundles match their sources
+        run: |
+          node src/renderer/canvas/build.js src/renderer/timecanvas.bundle.js
+          node src/renderer/canvas/build.js demo/timecanvas.bundle.js
+          git diff --exit-code -- src/renderer/timecanvas.bundle.js demo/timecanvas.bundle.js
