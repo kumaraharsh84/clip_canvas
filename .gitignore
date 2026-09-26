@@ -3,3 +3,17 @@ dist/
 data/
 *.db
 .DS_Store
+
+# SQLite side files that sit next to a database while it is open
+*.db-wal
+*.db-shm
+
+# Local tooling
+.claude/
+
+# Written by scratch/ scripts. Screenshots from verify-app.js --shots show your
+# real clipboard history, so they must never be committed.
+out/
+shots/
+scratch/temp_test_*
+*.log
