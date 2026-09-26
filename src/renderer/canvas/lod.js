@@ -4,11 +4,9 @@
 // The zoom labels reproduce the roadmap ladder that scratch/verify-time-zoom.js
 // asserts:  500% years | 400% months | 300% days | 200% hours | 100% clips
 //
-// The level is no longer derived from an absolute scale. The canvas is now
-// sized from its contents, so "scale 0.2" means something different for 600
-// clips than for 20,000. Instead the renderer finds which box currently frames
-// the view (renderer2d.framedNode) and the level is what you see INSIDE it:
-// framing a month means you are looking at days.
+// The level is not derived from an absolute scale: the renderer finds which
+// box currently frames the view (renderer2d.framedNode) and the level is what
+// you see INSIDE it -- framing a month means you are looking at days.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const LEVEL = {

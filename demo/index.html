@@ -140,7 +140,9 @@
       $("info-cats").replaceChildren();
     } else {
       $("info-title").textContent = d.title;
-      $("info-meta").textContent = `${d.count.toLocaleString()} clips` + (d.span ? "\n" + d.span : "");
+      $("info-meta").textContent = d.count
+        ? `${d.count.toLocaleString()} clips` + (d.span ? "\n" + d.span : "")
+        : "nothing copied";
       $("info-cats").replaceChildren(...d.categories.slice(0, 6).map((c) =>
         el("div", "row", swatch(c.color), c.label, el("span", "n", String(c.count)))));
     }
@@ -148,11 +150,12 @@
 
   function renderLegend() {
     const cats = tc.getTree().cats || {};
+    if (!Object.keys(cats).length) return;
     $("legend").replaceChildren(...Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([id, n]) =>
       el("span", "", swatch(tc.categoryById[id].ink), `${tc.categoryById[id].label} ${n}`)));
   }
 
-  function build() {
+  async function build() {
     const n = Number($("count").value);
     if (strip) strip.destroy();
     if (tc) tc.destroy();
@@ -166,22 +169,27 @@
       onFrame: (s) => {
         if (!hovered) scheduleInfo();
         $("hud").textContent = `draw ${s.ms.toFixed(1)} ms · ${s.level} ${s.zoomLabel} · ` +
-          `${s.cards} cards · ${s.textures} textures · lines ${s.linesDrawn}/${s.linesTotal}`;
+          `${s.cards} cards · ${s.loadedDays} days loaded · lines ${s.linesDrawn}/${s.linesTotal}`;
       },
       resolveImage: (clip) => clip.content,   // mock images are data URLs
     });
     strip = mountTimelineStrip($("timeline"), tc);
 
+    tc.onData(renderLegend);
+    window.__tc = tc; // for headless checks
+
+    // The same path as the app: counts for the calendar, then the days on
+    // screen, laid out as they load.
     const t1 = performance.now();
-    const info = tc.setClips(clips);
-    const layoutMs = performance.now() - t1;
+    await tc.setClips(clips, { view: "fit" });
+    await tc.whenIdle();
+    const loadMs = performance.now() - t1;
+    const info = tc.stats().loaded;
 
     $("buildinfo").textContent =
-      `${n.toLocaleString()} clips · gen ${genMs.toFixed(0)}ms · layout ${layoutMs.toFixed(0)}ms · ` +
+      `${n.toLocaleString()} clips · gen ${genMs.toFixed(0)}ms · ${info.days} days laid out in ${loadMs.toFixed(0)}ms · ` +
       `smallest text ${(info.minFontScale * 100).toFixed(0)}% · max zoom ${info.maxZoom.toFixed(0)}×`;
-    renderLegend();
     renderInfo();
-    window.__tc = tc; // for headless checks
   }
 
   $("regen").onclick = build;

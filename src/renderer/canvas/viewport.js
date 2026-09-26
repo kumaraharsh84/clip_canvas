@@ -12,12 +12,9 @@
 // must never be conflated. Internally everything uses `scale`.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// The canvas is sized from its contents (layout.layoutAuto), so its world
-// extent grows with the archive -- 2,000 clips already produce a canvas around
-// 356,000 world units wide. Fitting that into an 900px viewport needs a scale
-// near 0.0024, so a MIN_SCALE of 0.02 silently clamps "fit everything" and the
-// user is left looking at one corner with no way to zoom out. MIN_SCALE has to
-// leave headroom for an archive orders of magnitude larger than today's.
+// The calendar is fixed (calendar.js): a year is ~38,000 world units wide, a
+// day cell 1,200. Fitting several years into a 900px viewport needs a scale
+// near 0.005, so MIN_SCALE leaves room for decades of history.
 const MIN_SCALE = 1e-5;
 const MAX_SCALE = 8;
 
@@ -29,9 +26,9 @@ class Viewport {
     this.scale = scale;
     this.width = width;   // CSS px
     this.height = height; // CSS px
-    // Per-canvas limits. The ceiling is raised by the layout to whatever zoom
-    // makes the smallest text on the canvas readable (layout.layoutAuto ->
-    // maxZoom), so every clip can actually be read, not merely be present.
+    // Per-canvas limits. The ceiling is raised to whatever zoom makes the
+    // smallest text of any loaded day readable (layout.fillDay -> maxZoom), so
+    // every clip can actually be read, not merely be present.
     this.minScale = MIN_SCALE;
     this.maxScale = MAX_SCALE;
   }

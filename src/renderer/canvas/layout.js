@@ -1,10 +1,18 @@
 // ─── src/renderer/canvas/layout.js ───────────────────────────────────────────
-// Everything you have copied, as one continuous zoomable timeline.
+// The clips of ONE day, laid out inside that day's calendar cell.
 //
-//     Year > Month > Day > Hour > Clip
+//     Year > Month > Day          fixed, from the date alone (calendar.js)
+//                    Day > Hour > Clip     this file
 //
 // nested as boxes inside boxes, the way the reference nests a repository's
 // directories and files. You do not navigate into a level; you fly into it.
+//
+// WHY ONLY A DAY
+// This used to lay out the whole archive as one treemap, so every copy moved
+// everything: measured on 5,000 clips, one new clip shifted all 5,000, some by
+// 35 card widths. Now the calendar gives every day a permanent cell and this
+// fills one cell from that day's clips alone. A new copy can only rearrange
+// today; June stays where June was.
 //
 // THREE DECISIONS DEFINE THE LOOK
 //
@@ -45,8 +53,8 @@ const MIN_FACTOR = 0.35;        // a one-word clip is still a visible tile
 const MAX_FACTOR = 8;           // no clip may dominate the canvas
 const IMAGE_FACTOR = 1.15;
 const FONT_SCALE_FLOOR = 0.05;  // see clipWeight
-const CHROME_ALLOWANCE = 1.22;  // headers, padding and gaps across four levels
 const READABLE_PX = 7;          // body font size that counts as readable
+const MAX_ZOOM = 600;           // zoom ceiling, however small a day's text gets
 const SIBLING_FLOOR = 12;       // no box below 1/12 of its largest sibling
 const STRETCH_MAX = 2.5;        // children may fill at most 2.5x their natural area
 const NATURAL_SLACK = 1.2;      // natural area of a set of children, incl. their chrome
@@ -60,40 +68,79 @@ const MONTH_LONG = ["January", "February", "March", "April", "May", "June", "Jul
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAY_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-// ── Tree building ────────────────────────────────────────────────────────────
-function buildTree(clips) {
-  const root = node("root", "All clips", -1, null, 0, null);
-  root.labelLong = "All clips";
-
+// ── Filling a day ────────────────────────────────────────────────────────────
+/**
+ * Build a day's hours and clip cards from its clips, and lay them out inside
+ * the day's own rect, which the calendar fixed and this never changes.
+ *
+ * @param {object} day    a calendar day node (fixed rect and chrome)
+ * @param {object[]} clips that day's clip rows, any order
+ * @returns {{clips, minFontScale, worstOverflow, failed, maxZoom}}
+ */
+function fillDay(day, clips) {
+  day.children = [];
   for (const clip of clips) {
     const d = toDate(clip.created_at);
     const t = timeParts(clip, d);
-
-    const y = child(root, "y" + t.year, String(t.year), DEPTH.YEAR, t, t.year);
-    const m = child(y, "m" + t.month, MONTH_SHORT[t.month - 1], DEPTH.MONTH, t, t.month);
-    const dd = child(m, "d" + t.day, dayLabel(t), DEPTH.DAY, t, t.day);
-    const h = child(dd, "h" + t.hour, hourLabel(t.hour), DEPTH.HOUR, t, t.hour);
-
-    const ts = d.getTime() || 0;
-    const cat = categoryOf(clip);
-    const block = blockOf(clip, cat);
-
-    const leaf = node("c" + clip.id, clip.title || cat.label, DEPTH.CLIP, t, ts, h);
-    leaf.clip = clip;
-    leaf.ts = ts;
-    leaf.timeLabel = clockLabel(d);
-    leaf.cat = cat;
-    leaf.block = block.css;
-    leaf.blockRgb = block.rgb;
-    leaf.headerText = clip.title || cat.label;
-    // How much of the header a far-away card paints as a "filename" dash.
-    leaf.titleFrac = Math.min(1, 0.35 + leaf.headerText.length / 40);
-    leaf.weight = clipWeight(clip, cat);
-    h.children.push(leaf);
+    const h = child(day, "h" + t.hour, hourLabel(t.hour), DEPTH.HOUR, t, t.hour);
+    h.children.push(clipLeaf(clip, d, t, h));
   }
+  delete day._index;
 
-  rollUp(root);
-  return root;
+  let weight = 0;
+  for (const h of day.children) { rollUp(h); weight += h.weight; }
+  day.children.sort((a, b) => a.sortKey - b.sortKey);
+  day.weight = weight;
+
+  layoutNode(day);
+  return fitStats(day, clips.length);
+}
+
+/** Remove a day's clips, leaving the calendar cell and its counts. */
+function emptyDay(day) {
+  day.children = [];
+  day.weight = 0;
+}
+
+function clipLeaf(clip, d, t, parent) {
+  const ts = d.getTime() || 0;
+  const cat = categoryOf(clip);
+  const block = blockOf(clip, cat);
+
+  const leaf = node("c" + clip.id, clip.title || cat.label, DEPTH.CLIP, t, ts, parent);
+  leaf.clip = clip;
+  leaf.ts = ts;
+  leaf.timeLabel = clockLabel(d);
+  leaf.cat = cat;
+  leaf.block = block.css;
+  leaf.blockRgb = block.rgb;
+  leaf.headerText = clip.title || cat.label;
+  // How much of the header a far-away card paints as a "filename" dash.
+  leaf.titleFrac = Math.min(1, 0.35 + leaf.headerText.length / 40);
+  leaf.weight = clipWeight(clip, cat);
+  return leaf;
+}
+
+/** How well a laid-out subtree's text fits, and the zoom its smallest text needs. */
+function fitStats(root, clips) {
+  let minFontScale = 1;
+  let worst = 0;
+  let failed = 0;
+  (function walk(n) {
+    if (n.clip) {
+      if (!n.fit) return;
+      if (n.fit.scale < minFontScale) minFontScale = n.fit.scale;
+      const r = n.fit.neededHeight / n.body.h;
+      if (r > worst) worst = r;
+      if (!n.fit.fits) failed++;
+      return;
+    }
+    for (const kid of n.children) walk(kid);
+  })(root);
+
+  // Deep enough that the smallest text in the day can be read.
+  const maxZoom = Math.min(MAX_ZOOM, Math.max(8, READABLE_PX / (CARD_FONT_PX * minFontScale)));
+  return { clips, minFontScale, worstOverflow: worst, failed, maxZoom };
 }
 
 function node(key, label, depth, time, sortKey, parent) {
@@ -201,43 +248,12 @@ function clipWeight(clip, cat) {
 
 // ── Layout ───────────────────────────────────────────────────────────────────
 /**
- * Lay the whole tree out on a canvas of the given aspect, then fit every card's
- * text. One pass: because text now scales to its box, no box ever has to be
- * grown to fit its text, so the fixed-point loop the old layout needed is gone.
+ * Lay a box's children out inside it, then fit every card's text. One pass:
+ * because text scales to its box, no box ever has to be grown to fit its text.
+ * A `fixed` box (a calendar cell) keeps the header and padding it was given.
  */
-function layoutAuto(root, { aspect = 1.6, origin = { x: 0, y: 0 } } = {}) {
-  const area = Math.max(1, root.weight) * CHROME_ALLOWANCE;
-  const w = Math.sqrt(area * aspect);
-  root.x = origin.x;
-  root.y = origin.y;
-  root.w = w;
-  root.h = area / w;
-
-  layoutNode(root);
-
-  let minFontScale = 1;
-  let worst = 0;
-  let failed = 0;
-  (function walk(n) {
-    if (n.clip) {
-      if (!n.fit) return;
-      if (n.fit.scale < minFontScale) minFontScale = n.fit.scale;
-      const r = n.fit.neededHeight / n.body.h;
-      if (r > worst) worst = r;
-      if (!n.fit.fits) failed++;
-      return;
-    }
-    for (const kid of n.children) walk(kid);
-  })(root);
-
-  // Deep enough that the smallest text on the canvas can be read.
-  const maxZoom = Math.min(600, Math.max(8, READABLE_PX / (CARD_FONT_PX * minFontScale)));
-
-  return { root, area, iterations: 1, worstOverflow: worst, minFontScale, maxZoom, failed };
-}
-
 function layoutNode(n) {
-  chrome(n);
+  if (!n.fixed) chrome(n);
   const inner = {
     x: n.x + n.pad,
     y: n.y + n.hdr,
@@ -506,9 +522,9 @@ function hourKey(date) {
 }
 
 module.exports = {
-  buildTree, layoutAuto, stripLayout, clipWeight, node, timeParts,
+  fillDay, emptyDay, stripLayout, clipWeight, node, timeParts,
   DEPTH, CARD_FONT_PX, CARD_LINE_H, CARD_CHAR_W, COL_GAP,
-  BASE_AREA, MIN_FACTOR, MAX_FACTOR, FONT_SCALE_FLOOR, READABLE_PX,
+  BASE_AREA, MIN_FACTOR, MAX_FACTOR, FONT_SCALE_FLOOR, READABLE_PX, MAX_ZOOM,
   MONTH_SHORT, MONTH_LONG, WEEKDAY_SHORT, WEEKDAY_LONG,
   toDate, clockLabel, hourLabel, dayLabel, longLabel, hourKey,
 };

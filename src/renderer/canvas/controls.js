@@ -11,7 +11,7 @@
 //   double-click     fly into the box under the cursor
 //   right-click      fly back out one level
 //   F / Home         fit everything        + / -   zoom        arrows   pan
-//   Backspace        fly out one level
+//   T                today                 Backspace   fly out one level
 //
 // Wheel direction is unchanged from the DOM version (deltaY > 0 zooms out),
 // which is what scratch/verify-time-zoom.js asserts.
@@ -29,7 +29,7 @@ class Controls {
   /**
    * @param {HTMLCanvasElement} canvas
    * @param {Viewport} vp
-   * @param {object} hooks  { onChange, getTree, pick, onPick, onHover }
+   * @param {object} hooks  { onChange, getTree, pick, onPick, onHover, onFit, onToday }
    */
   constructor(canvas, vp, hooks = {}) {
     this.canvas = canvas;
@@ -232,11 +232,8 @@ class Controls {
 
     const center = { x: this.vp.width / 2, y: this.vp.height / 2 };
     switch (e.key) {
-      case "f": case "F": case "Home": {
-        const tree = this.tree();
-        if (tree) this.fit(tree);
-        break;
-      }
+      case "f": case "F": case "Home": this.fitAll(); break;
+      case "t": case "T": if (this.hooks.onToday) this.hooks.onToday(); break;
       case "+": case "=": this.zoomToward(KEY_ZOOM, center); break;
       case "-": case "_": this.zoomToward(1 / KEY_ZOOM, center); break;
       case "ArrowLeft": this.panAnimated(this.vp.width * KEY_PAN, 0); break;
@@ -288,7 +285,15 @@ class Controls {
     for (let a = this.pickAt(at); a; a = a.parent) {
       if (a.w * this.vp.scale > W || a.h * this.vp.scale > H) { target = a; break; }
     }
-    this.fit(target || tree);
+    if (target) this.fit(target);
+    else this.fitAll();
+  }
+
+  /** Everything worth seeing -- the owner decides what that is (onFit). */
+  fitAll() {
+    if (this.hooks.onFit) { this.hooks.onFit(); return; }
+    const tree = this.tree();
+    if (tree) this.fit(tree);
   }
 
   /**

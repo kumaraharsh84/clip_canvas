@@ -1,6 +1,6 @@
 // ─── scratch/capture-demo.js ─────────────────────────────────────────────────
-// Screenshots of the demo page for the README: the whole archive, one day, one
-// hour, and one clip up close.
+// Screenshots of the demo page for the README: the whole year, one month, one
+// day, one hour, and one clip up close.
 //
 // The demo draws SYNTHETIC clips (demo/mockdata.js), so these images are safe
 // to publish -- unlike verify-app.js --shots, which photographs your real
@@ -42,9 +42,10 @@ app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 // arriving -- both are painted over several frames, within a per-frame budget.
 const SETTLE = `(async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  for (let w = 0; w < 20000 && !(window.__tc && window.__tc.getTree()); w += 100) await sleep(100);
+  for (let w = 0; w < 20000 && !(window.__tc && window.__tc.getTree().count); w += 100) await sleep(100);
   const tc = window.__tc;
-  if (!tc || !tc.getTree()) return { error: "the demo never mounted" };
+  if (!tc || !tc.getTree().count) return { error: "the demo never mounted" };
+  await tc.whenIdle();
   let quiet = 0, last = "";
   for (let w = 0; w < 10000 && quiet < 4; w += 150) {
     tc.invalidate();
@@ -65,13 +66,25 @@ const SET_COUNT = (n) => `(() => {
   return { ok: true };
 })()`;
 
-/** Frame the best-scoring box at `depth` (2 day, 3 hour, 4 clip). */
+// The busiest month, as a wall calendar.
+const MONTH = `(() => {
+  const tc = window.__tc;
+  let best = null;
+  for (const y of tc.getTree().children) for (const m of y.children) if (!best || m.count > best.count) best = m;
+  document.getElementById("hint").hidden = true;
+  tc.viewport.fitTo({ x0: best.x, y0: best.y, x1: best.x + best.w, y1: best.y + best.h }, 12);
+  tc.invalidate();
+  return { label: best.labelLong };
+})()`;
+
+/** Frame the best-scoring LOADED box at `depth` (2 day, 3 hour, 4 clip). */
 const FRAME = (depth, score, pad) => `(() => {
   const tc = window.__tc;
   const score = ${score};
   let best = null, bs = -Infinity;
   (function walk(n) {
     if (n.depth === ${depth}) {
+      if (n.depth === 2 && !n.children.length) return;
       const s = score(n);
       if (s > bs) { bs = s; best = n; }
       return;
@@ -132,6 +145,7 @@ app.whenReady().then(async () => {
     await run(SETTLE);
     await run(SET_COUNT(CLIPS));
     await shot("overview", `${CLIPS} clips`);
+    await shot("month", (await run(MONTH)).label);
     await shot("day", (await run(FRAME(2, DAY, 14))).label);
     await shot("hour", (await run(FRAME(3, HOUR, 12))).label);
     await shot("clip", (await run(FRAME(4, CLIP, 18))).label);

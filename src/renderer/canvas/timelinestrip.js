@@ -1,10 +1,9 @@
 // ─── src/renderer/canvas/timelinestrip.js ────────────────────────────────────
 // The time axis, drawn as a strip under the canvas.
 //
-// The treemap keeps everything in time order, but a treemap cannot show the
-// calendar: a quiet week and a missing week look the same once the days are
-// packed into boxes. This strip lays every calendar day from your first clip
-// to your last side by side -- empty days included, so gaps in your history
+// The canvas is a calendar of months, which shows a week at a glance but not
+// the rhythm of a whole history. This strip lays every day from your first
+// clip to today side by side -- empty days included, so gaps in your history
 // show as gaps -- with a bar for how much you copied that day.
 //
 // It also answers "where am I?": the days currently on the canvas are lit, so
@@ -52,6 +51,7 @@ function mountTimelineStrip(host, tc) {
       for (const y of tree.children) {
         for (const m of y.children) {
           for (const d of m.children) {
+            if (!d.count) continue;
             const t = d.time;
             found.push({ date: new Date(t.year, t.month - 1, t.day), node: d });
           }
@@ -62,7 +62,9 @@ function mountTimelineStrip(host, tc) {
     if (found.length) {
       found.sort((a, b) => a.date - b.date);
       const byDay = new Map(found.map((f) => [dayKey(f.date), f.node]));
-      const last = found[found.length - 1].date;
+      const today = new Date();
+      const lastFound = found[found.length - 1].date;
+      const last = lastFound > today ? lastFound : new Date(today.getFullYear(), today.getMonth(), today.getDate());
       // setDate steps calendar days, so this is DST-safe.
       for (let d = new Date(found[0].date); d <= last; d.setDate(d.getDate() + 1)) {
         const node = byDay.get(dayKey(d)) || null;

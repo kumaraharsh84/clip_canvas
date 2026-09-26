@@ -22,6 +22,7 @@ const MODULES = [
   "lod.js",
   "viewport.js",
   "layout.js",
+  "calendar.js",
   "describe.js",
   "imagecache.js",
   "texturecache.js",

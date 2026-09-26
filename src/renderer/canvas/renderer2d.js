@@ -13,6 +13,12 @@
 // None of these ever truncates: every level draws the card's COMPLETE text at
 // the card's own font scale (layout.js), only the level of detail changes.
 //
+// DAYS ARE CALENDAR CELLS
+// Years, months and days are the fixed calendar (calendar.js). A day whose
+// clips are not loaded -- far away, or not yet fetched -- is a heat cell in
+// the colour of what was copied that day; once loaded it holds its hours and
+// cards like any other box.
+//
 // COST IS BOUNDED BY WHAT IS ON SCREEN, NOT BY HOW MUCH YOU HAVE COPIED
 //   - off-screen subtrees are rejected with one rectangle test
 //   - containers smaller than 3px are one flat rect in the blend of their
@@ -38,6 +44,11 @@ const THEME = {
   hover: "#e8f0f6",
   selected: "#ffcc55",
   now: "#39d98a",
+  dayEmpty: "#0e1319",
+  dayFuture: "#0c1015",
+  dayNumber: "#c3d2de",
+  dayNumberDim: "#4d6072",
+  weekday: "#6d8397",
 };
 
 const FONT_MONO = "ui-monospace, 'Cascadia Mono', Consolas, 'Courier New', monospace";
@@ -62,6 +73,7 @@ class Renderer2D {
     this.selectedKey = null;
     this.hoverKey = null;
     this.nowKey = null;
+    this.todayKey = null;
     this.stats = emptyStats();
 
     // Layout reserves 0.6em per character. Real monospace fonts are narrower
@@ -131,6 +143,7 @@ class Renderer2D {
 
   // ── Containers: year / month / day / hour ──────────────────────────────────
   drawContainer(n, sx, sy, sw, sh) {
+    if (n.depth === L.DEPTH.DAY) { this.drawDay(n, sx, sy, sw, sh); return; }
     const ctx = this.ctx;
     const d = n.depth < 0 ? 0 : Math.min(3, n.depth);
 
@@ -166,6 +179,132 @@ class Renderer2D {
     }
 
     this.drawContainerLabel(n, sx, sy, sw);
+    if (n.depth === L.DEPTH.MONTH) this.drawWeekdays(n, sx, sy);
+  }
+
+  /** Sun Mon Tue ... over a month's day columns. */
+  drawWeekdays(n, sx, sy) {
+    const s = this.vp.scale;
+    const rowPx = n.weekHdr * s;
+    const fontPx = Math.min(rowPx * 0.5, 15);
+    if (fontPx < 6.5) return;
+    const ctx = this.ctx;
+    const cellPx = n.cellW * s;
+    const long = cellPx > fontPx * 3.2;
+    ctx.save();
+    ctx.font = "600 " + fontPx.toFixed(1) + "px " + FONT_SANS;
+    ctx.fillStyle = this.theme.weekday;
+    ctx.textBaseline = "middle";
+    const cy = sy + (n.hdr + n.weekHdr * 0.55) * s;
+    for (let c = 0; c < 7; c++) {
+      const wd = (n.weekStart + c) % 7;
+      const label = long ? L.WEEKDAY_SHORT[wd] : L.WEEKDAY_SHORT[wd][0];
+      const x = sx + (n.pad + c * (n.cellW + n.gap)) * s;
+      ctx.fillText(label, x + Math.min(8, cellPx * 0.06), cy);
+    }
+    ctx.restore();
+  }
+
+  // ── Days: calendar cells ───────────────────────────────────────────────────
+  drawDay(n, sx, sy, sw, sh) {
+    const ctx = this.ctx;
+    const hasClips = n.count > 0;
+    const open = n.loaded && n.children.length > 0;
+
+    let fill;
+    if (!hasClips) fill = n.future ? this.theme.dayFuture : this.theme.dayEmpty;
+    else fill = open && sw >= RECURSE_MIN_PX ? this.theme.container[2] : n.heat;
+    ctx.fillStyle = fill;
+    ctx.fillRect(sx, sy, sw, sh);
+    this.stats.days++;
+    if (sw < RECURSE_MIN_PX || sh < RECURSE_MIN_PX) { this.stats.collapsed++; return; }
+
+    if (open) for (const kid of n.children) this.drawNode(kid);
+
+    const hovered = this.hoverKey === n.key;
+    if (sw > 6 && sh > 6 && (hasClips || hovered)) {
+      ctx.strokeStyle = hovered ? this.theme.hover : this.theme.containerEdge[2];
+      ctx.lineWidth = hovered ? 1.5 : 1;
+      ctx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1);
+    }
+    if (this.todayKey === n.key && sw > 4 && sh > 4) {
+      ctx.strokeStyle = this.theme.now;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx + 1, sy + 1, sw - 2, sh - 2);
+    }
+    this.drawDayLabel(n, sx, sy, sw, sh, open);
+  }
+
+  /**
+   * The day's number, like a wall calendar -- in the header band once that is
+   * big enough to read, with the weekday and clip count as room allows; before
+   * that, sized to the cell, over the heat colour or the mosaic.
+   */
+  drawDayLabel(n, sx, sy, sw, sh, open) {
+    const s = this.vp.scale;
+    const ctx = this.ctx;
+    const hdrPx = n.hdr * s;
+    const padPx = n.pad * s;
+    const today = this.todayKey === n.key;
+    const numColor = today ? this.theme.now
+      : n.count > 0 ? this.theme.dayNumber : this.theme.dayNumberDim;
+
+    const bandFont = Math.min(hdrPx * 0.6, 30);
+    if (bandFont >= 8) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(sx, sy, sw, hdrPx);
+      ctx.clip();
+      ctx.textBaseline = "middle";
+      const cy = sy + Math.min(hdrPx, bandFont * 1.7) / 2;
+      const room = sw - padPx * 2;
+      ctx.font = (n.count ? "600 " : "") + bandFont.toFixed(1) + "px " + FONT_SANS;
+      const full = n.labelLong;
+      const label = ctx.measureText(full).width < room * 0.62 ? full
+        : ctx.measureText(n.label).width < room * 0.62 ? n.label : String(n.time.day);
+      ctx.fillStyle = numColor;
+      ctx.fillText(label, sx + padPx, cy);
+      const used = ctx.measureText(label).width;
+      if (n.count) {
+        ctx.font = (bandFont * 0.8).toFixed(1) + "px " + FONT_SANS;
+        const badge = n.count.toLocaleString() + (n.count === 1 ? " clip" : " clips");
+        const bw = ctx.measureText(badge).width;
+        if (used + bandFont + bw < room) {
+          ctx.fillStyle = this.theme.labelDim;
+          ctx.fillText(badge, sx + sw - padPx - bw, cy);
+        }
+      }
+      ctx.restore();
+      this.stats.labels++;
+      return;
+    }
+
+    // Too small for the band: the bare number, scaled to the cell.
+    const fontPx = Math.min(sh * 0.3, sw * 0.26, 18);
+    if (fontPx < 7) return;
+    const label = String(n.time.day);
+    ctx.save();
+    ctx.font = (n.count ? "600 " : "") + fontPx.toFixed(1) + "px " + FONT_SANS;
+    ctx.textBaseline = "top";
+    const x = sx + Math.max(2, sw * 0.06);
+    const y = sy + Math.max(1, sh * 0.05);
+    if (open) {
+      // Over the mosaic the number needs its own backing to stay legible.
+      const w = ctx.measureText(label).width;
+      ctx.fillStyle = "rgba(11,15,20,0.72)";
+      ctx.fillRect(x - 2, y - 1, w + 4, fontPx * 1.15);
+    }
+    ctx.fillStyle = numColor;
+    ctx.fillText(label, x, y);
+    if (!open && n.count && fontPx >= 9 && sh > fontPx * 3) {
+      ctx.font = (fontPx * 0.78).toFixed(1) + "px " + FONT_SANS;
+      ctx.fillStyle = this.theme.labelDim;
+      ctx.textBaseline = "bottom";
+      const c = String(n.count);
+      ctx.fillText(c, sx + sw - Math.max(3, sw * 0.08) - ctx.measureText(c).width, sy + sh - Math.max(2, sh * 0.06));
+    }
+    ctx.restore();
+    this.stats.labels++;
   }
 
   drawContainerLabel(n, sx, sy, sw) {
@@ -454,16 +593,19 @@ class Renderer2D {
       tw = Math.max(2, Math.round(TEX_MAX * n.body.w / n.body.h));
     }
 
-    let bmp = this.textures.get(n.key, tw);
+    // texKey, not key: it changes when the card's day is laid out again, and
+    // a texture painted for the card's old shape must not be reused.
+    const key = n.texKey || n.key;
+    let bmp = this.textures.get(key, tw);
     if (!bmp) {
       if (performance.now() < this.texDeadline) {
-        bmp = this.textures.make(n.key, tw, tw, th, (tctx, w, h) => this.paintTexture(tctx, n, w, h));
+        bmp = this.textures.make(key, tw, tw, th, (tctx, w, h) => this.paintTexture(tctx, n, w, h));
         this.stats.texturesMade++;
       } else {
         // Out of budget this frame: use any size already painted, and ask the
         // frame loop to come back for the rest.
         this.texStarved = true;
-        bmp = this.textures.getAny(n.key);
+        bmp = this.textures.getAny(key);
       }
     }
 
@@ -581,7 +723,7 @@ function texStep(v) {
 
 function emptyStats() {
   return {
-    boxes: 0, cards: 0, labels: 0, culled: 0, collapsed: 0,
+    boxes: 0, days: 0, cards: 0, labels: 0, culled: 0, collapsed: 0,
     linesDrawn: 0, linesTotal: 0, thumbs: 0, thumbPending: 0,
     textures: 0, texturesMade: 0, needsMore: false,
     ms: 0, level: "", zoomLabel: "", scale: 1,

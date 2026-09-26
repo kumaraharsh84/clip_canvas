@@ -1085,11 +1085,9 @@
     // The zoom labels reproduce the roadmap ladder that scratch/verify-time-zoom.js
     // asserts:  500% years | 400% months | 300% days | 200% hours | 100% clips
     //
-    // The level is no longer derived from an absolute scale. The canvas is now
-    // sized from its contents, so "scale 0.2" means something different for 600
-    // clips than for 20,000. Instead the renderer finds which box currently frames
-    // the view (renderer2d.framedNode) and the level is what you see INSIDE it:
-    // framing a month means you are looking at days.
+    // The level is not derived from an absolute scale: the renderer finds which
+    // box currently frames the view (renderer2d.framedNode) and the level is what
+    // you see INSIDE it -- framing a month means you are looking at days.
     // ─────────────────────────────────────────────────────────────────────────────
 
     const LEVEL = {
@@ -1142,12 +1140,9 @@
     // must never be conflated. Internally everything uses `scale`.
     // ─────────────────────────────────────────────────────────────────────────────
 
-    // The canvas is sized from its contents (layout.layoutAuto), so its world
-    // extent grows with the archive -- 2,000 clips already produce a canvas around
-    // 356,000 world units wide. Fitting that into an 900px viewport needs a scale
-    // near 0.0024, so a MIN_SCALE of 0.02 silently clamps "fit everything" and the
-    // user is left looking at one corner with no way to zoom out. MIN_SCALE has to
-    // leave headroom for an archive orders of magnitude larger than today's.
+    // The calendar is fixed (calendar.js): a year is ~38,000 world units wide, a
+    // day cell 1,200. Fitting several years into a 900px viewport needs a scale
+    // near 0.005, so MIN_SCALE leaves room for decades of history.
     const MIN_SCALE = 1e-5;
     const MAX_SCALE = 8;
 
@@ -1159,9 +1154,9 @@
         this.scale = scale;
         this.width = width;   // CSS px
         this.height = height; // CSS px
-        // Per-canvas limits. The ceiling is raised by the layout to whatever zoom
-        // makes the smallest text on the canvas readable (layout.layoutAuto ->
-        // maxZoom), so every clip can actually be read, not merely be present.
+        // Per-canvas limits. The ceiling is raised to whatever zoom makes the
+        // smallest text of any loaded day readable (layout.fillDay -> maxZoom), so
+        // every clip can actually be read, not merely be present.
         this.minScale = MIN_SCALE;
         this.maxScale = MAX_SCALE;
       }
@@ -1235,12 +1230,20 @@
 
   define("layout", function (module, exports, require) {
     // ─── src/renderer/canvas/layout.js ───────────────────────────────────────────
-    // Everything you have copied, as one continuous zoomable timeline.
+    // The clips of ONE day, laid out inside that day's calendar cell.
     //
-    //     Year > Month > Day > Hour > Clip
+    //     Year > Month > Day          fixed, from the date alone (calendar.js)
+    //                    Day > Hour > Clip     this file
     //
     // nested as boxes inside boxes, the way the reference nests a repository's
     // directories and files. You do not navigate into a level; you fly into it.
+    //
+    // WHY ONLY A DAY
+    // This used to lay out the whole archive as one treemap, so every copy moved
+    // everything: measured on 5,000 clips, one new clip shifted all 5,000, some by
+    // 35 card widths. Now the calendar gives every day a permanent cell and this
+    // fills one cell from that day's clips alone. A new copy can only rearrange
+    // today; June stays where June was.
     //
     // THREE DECISIONS DEFINE THE LOOK
     //
@@ -1281,8 +1284,8 @@
     const MAX_FACTOR = 8;           // no clip may dominate the canvas
     const IMAGE_FACTOR = 1.15;
     const FONT_SCALE_FLOOR = 0.05;  // see clipWeight
-    const CHROME_ALLOWANCE = 1.22;  // headers, padding and gaps across four levels
     const READABLE_PX = 7;          // body font size that counts as readable
+    const MAX_ZOOM = 600;           // zoom ceiling, however small a day's text gets
     const SIBLING_FLOOR = 12;       // no box below 1/12 of its largest sibling
     const STRETCH_MAX = 2.5;        // children may fill at most 2.5x their natural area
     const NATURAL_SLACK = 1.2;      // natural area of a set of children, incl. their chrome
@@ -1296,40 +1299,79 @@
     const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const WEEKDAY_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-    // ── Tree building ────────────────────────────────────────────────────────────
-    function buildTree(clips) {
-      const root = node("root", "All clips", -1, null, 0, null);
-      root.labelLong = "All clips";
-
+    // ── Filling a day ────────────────────────────────────────────────────────────
+    /**
+     * Build a day's hours and clip cards from its clips, and lay them out inside
+     * the day's own rect, which the calendar fixed and this never changes.
+     *
+     * @param {object} day    a calendar day node (fixed rect and chrome)
+     * @param {object[]} clips that day's clip rows, any order
+     * @returns {{clips, minFontScale, worstOverflow, failed, maxZoom}}
+     */
+    function fillDay(day, clips) {
+      day.children = [];
       for (const clip of clips) {
         const d = toDate(clip.created_at);
         const t = timeParts(clip, d);
-
-        const y = child(root, "y" + t.year, String(t.year), DEPTH.YEAR, t, t.year);
-        const m = child(y, "m" + t.month, MONTH_SHORT[t.month - 1], DEPTH.MONTH, t, t.month);
-        const dd = child(m, "d" + t.day, dayLabel(t), DEPTH.DAY, t, t.day);
-        const h = child(dd, "h" + t.hour, hourLabel(t.hour), DEPTH.HOUR, t, t.hour);
-
-        const ts = d.getTime() || 0;
-        const cat = categoryOf(clip);
-        const block = blockOf(clip, cat);
-
-        const leaf = node("c" + clip.id, clip.title || cat.label, DEPTH.CLIP, t, ts, h);
-        leaf.clip = clip;
-        leaf.ts = ts;
-        leaf.timeLabel = clockLabel(d);
-        leaf.cat = cat;
-        leaf.block = block.css;
-        leaf.blockRgb = block.rgb;
-        leaf.headerText = clip.title || cat.label;
-        // How much of the header a far-away card paints as a "filename" dash.
-        leaf.titleFrac = Math.min(1, 0.35 + leaf.headerText.length / 40);
-        leaf.weight = clipWeight(clip, cat);
-        h.children.push(leaf);
+        const h = child(day, "h" + t.hour, hourLabel(t.hour), DEPTH.HOUR, t, t.hour);
+        h.children.push(clipLeaf(clip, d, t, h));
       }
+      delete day._index;
 
-      rollUp(root);
-      return root;
+      let weight = 0;
+      for (const h of day.children) { rollUp(h); weight += h.weight; }
+      day.children.sort((a, b) => a.sortKey - b.sortKey);
+      day.weight = weight;
+
+      layoutNode(day);
+      return fitStats(day, clips.length);
+    }
+
+    /** Remove a day's clips, leaving the calendar cell and its counts. */
+    function emptyDay(day) {
+      day.children = [];
+      day.weight = 0;
+    }
+
+    function clipLeaf(clip, d, t, parent) {
+      const ts = d.getTime() || 0;
+      const cat = categoryOf(clip);
+      const block = blockOf(clip, cat);
+
+      const leaf = node("c" + clip.id, clip.title || cat.label, DEPTH.CLIP, t, ts, parent);
+      leaf.clip = clip;
+      leaf.ts = ts;
+      leaf.timeLabel = clockLabel(d);
+      leaf.cat = cat;
+      leaf.block = block.css;
+      leaf.blockRgb = block.rgb;
+      leaf.headerText = clip.title || cat.label;
+      // How much of the header a far-away card paints as a "filename" dash.
+      leaf.titleFrac = Math.min(1, 0.35 + leaf.headerText.length / 40);
+      leaf.weight = clipWeight(clip, cat);
+      return leaf;
+    }
+
+    /** How well a laid-out subtree's text fits, and the zoom its smallest text needs. */
+    function fitStats(root, clips) {
+      let minFontScale = 1;
+      let worst = 0;
+      let failed = 0;
+      (function walk(n) {
+        if (n.clip) {
+          if (!n.fit) return;
+          if (n.fit.scale < minFontScale) minFontScale = n.fit.scale;
+          const r = n.fit.neededHeight / n.body.h;
+          if (r > worst) worst = r;
+          if (!n.fit.fits) failed++;
+          return;
+        }
+        for (const kid of n.children) walk(kid);
+      })(root);
+
+      // Deep enough that the smallest text in the day can be read.
+      const maxZoom = Math.min(MAX_ZOOM, Math.max(8, READABLE_PX / (CARD_FONT_PX * minFontScale)));
+      return { clips, minFontScale, worstOverflow: worst, failed, maxZoom };
     }
 
     function node(key, label, depth, time, sortKey, parent) {
@@ -1437,43 +1479,12 @@
 
     // ── Layout ───────────────────────────────────────────────────────────────────
     /**
-     * Lay the whole tree out on a canvas of the given aspect, then fit every card's
-     * text. One pass: because text now scales to its box, no box ever has to be
-     * grown to fit its text, so the fixed-point loop the old layout needed is gone.
+     * Lay a box's children out inside it, then fit every card's text. One pass:
+     * because text scales to its box, no box ever has to be grown to fit its text.
+     * A `fixed` box (a calendar cell) keeps the header and padding it was given.
      */
-    function layoutAuto(root, { aspect = 1.6, origin = { x: 0, y: 0 } } = {}) {
-      const area = Math.max(1, root.weight) * CHROME_ALLOWANCE;
-      const w = Math.sqrt(area * aspect);
-      root.x = origin.x;
-      root.y = origin.y;
-      root.w = w;
-      root.h = area / w;
-
-      layoutNode(root);
-
-      let minFontScale = 1;
-      let worst = 0;
-      let failed = 0;
-      (function walk(n) {
-        if (n.clip) {
-          if (!n.fit) return;
-          if (n.fit.scale < minFontScale) minFontScale = n.fit.scale;
-          const r = n.fit.neededHeight / n.body.h;
-          if (r > worst) worst = r;
-          if (!n.fit.fits) failed++;
-          return;
-        }
-        for (const kid of n.children) walk(kid);
-      })(root);
-
-      // Deep enough that the smallest text on the canvas can be read.
-      const maxZoom = Math.min(600, Math.max(8, READABLE_PX / (CARD_FONT_PX * minFontScale)));
-
-      return { root, area, iterations: 1, worstOverflow: worst, minFontScale, maxZoom, failed };
-    }
-
     function layoutNode(n) {
-      chrome(n);
+      if (!n.fixed) chrome(n);
       const inner = {
         x: n.x + n.pad,
         y: n.y + n.hdr,
@@ -1742,11 +1753,283 @@
     }
 
     module.exports = {
-      buildTree, layoutAuto, stripLayout, clipWeight, node, timeParts,
+      fillDay, emptyDay, stripLayout, clipWeight, node, timeParts,
       DEPTH, CARD_FONT_PX, CARD_LINE_H, CARD_CHAR_W, COL_GAP,
-      BASE_AREA, MIN_FACTOR, MAX_FACTOR, FONT_SCALE_FLOOR, READABLE_PX,
+      BASE_AREA, MIN_FACTOR, MAX_FACTOR, FONT_SCALE_FLOOR, READABLE_PX, MAX_ZOOM,
       MONTH_SHORT, MONTH_LONG, WEEKDAY_SHORT, WEEKDAY_LONG,
       toDate, clockLabel, hourLabel, dayLabel, longLabel, hourKey,
+    };
+
+  });
+
+  define("calendar", function (module, exports, require) {
+    // ─── src/renderer/canvas/calendar.js ─────────────────────────────────────────
+    // Where every day lives. Fixed, like a drawing: a day's place on the canvas
+    // comes from its date and nothing else.
+    //
+    //   year    a box; years sit side by side, anchored at (year - 2000), so a
+    //           year's position does not depend on which other years exist
+    //   month   4 x 3 grid inside its year, like a wall calendar
+    //   day     7-column week grid inside its month, 6 week rows, Sunday first
+    //
+    // This is the AutoCAD property the treemap lacked: something at (100, 200)
+    // stays at (100, 200). Copying a clip cannot move June; searching, filtering
+    // or switching workspace cannot either -- the camera stays on the same date.
+    //
+    // The calendar knows only COUNTS (clips per day per category, from
+    // db.getDayCounts), which is enough to draw every day of every year as a heat
+    // cell without loading a single clip. A day's clips are loaded, and laid out
+    // inside its cell by layout.fillDay, only once you zoom close enough to see
+    // them (index.js decides when).
+    //
+    // Pure: no DOM, so scratch/verify-timecanvas-2d.js checks it on plain Node.
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    const { CATEGORIES, mix, rgbCss, BG } = require("./classify");
+    const L = require("./layout");
+
+    // ── Geometry, in world units ────────────────────────────────────────────────
+    // A day cell is about one screen at scale 1, which is where clip text becomes
+    // readable (layout.js card metrics are in the same units).
+    const EPOCH_YEAR = 2000;
+    const DAY_W = 1200;
+    const DAY_H = 900;
+    const DAY_GAP = 40;
+    const DAY_HDR = 120;       // band for the day's number and clip count
+    const DAY_PAD = 24;
+    const DAY_INNER_GAP = 14;  // between hour boxes inside a day
+    const WEEK_ROWS = 6;
+    const MONTH_PAD = 90;
+    const MONTH_HDR = 620;     // month name: legible when a whole year is on screen
+    const WEEK_HDR = 200;      // Sun Mon Tue ... row
+    const MONTH_GAP = 520;
+    const YEAR_PAD = 520;
+    const YEAR_HDR = 1700;
+    const YEAR_GAP = 4200;
+
+    const MONTH_W = 2 * MONTH_PAD + 7 * DAY_W + 6 * DAY_GAP;
+    const MONTH_H = MONTH_HDR + WEEK_HDR + WEEK_ROWS * DAY_H + (WEEK_ROWS - 1) * DAY_GAP + MONTH_PAD;
+    const YEAR_W = 2 * YEAR_PAD + 4 * MONTH_W + 3 * MONTH_GAP;
+    const YEAR_H = YEAR_HDR + 3 * MONTH_H + 2 * MONTH_GAP + YEAR_PAD;
+    const YEAR_STRIDE = YEAR_W + YEAR_GAP;
+
+    // COALESCE(category, type) in getDayCounts can hand back a storage type for a
+    // row the backfill has not reached; map those onto canvas categories.
+    const TYPE_TO_CATEGORY = { text: "prose", code: "code", url: "url", image: "image", file: "file" };
+
+    const dayId = (year, month, day) => year + "-" + month + "-" + day;
+
+    // ── Building ─────────────────────────────────────────────────────────────────
+    /**
+     * Calendar for `years` (ascending, contiguous or not). Every day node gets
+     * its permanent rect; `root.dayIndex` maps "y-m-d" to it.
+     * @param {number[]} years
+     * @param {{weekStart?: number, today?: Date}} [opts]
+     */
+    function buildCalendar(years, { weekStart = 0, today = new Date() } = {}) {
+      const root = L.node("root", "All clips", -1, null, 0, null);
+      root.labelLong = "All clips";
+      root.fixed = true;
+      root.dayIndex = new Map();
+      root.years = years.slice();
+      const todayMs = startOfDay(today).getTime();
+
+      let x0 = Infinity;
+      let x1 = -Infinity;
+      for (const year of years) {
+        const yr = L.node("root/y" + year, String(year), L.DEPTH.YEAR, { year }, year, root);
+        place(yr, (year - EPOCH_YEAR) * YEAR_STRIDE, 0, YEAR_W, YEAR_H, YEAR_HDR, YEAR_PAD, MONTH_GAP);
+        root.children.push(yr);
+        x0 = Math.min(x0, yr.x);
+        x1 = Math.max(x1, yr.x + yr.w);
+
+        for (let m = 1; m <= 12; m++) {
+          const col = (m - 1) % 4;
+          const row = Math.floor((m - 1) / 4);
+          const mo = L.node(yr.key + "/m" + m, L.MONTH_SHORT[m - 1], L.DEPTH.MONTH, { year, month: m }, m, yr);
+          mo.labelLong = L.MONTH_LONG[m - 1] + " " + year;
+          place(mo,
+            yr.x + YEAR_PAD + col * (MONTH_W + MONTH_GAP),
+            yr.y + YEAR_HDR + row * (MONTH_H + MONTH_GAP),
+            MONTH_W, MONTH_H, MONTH_HDR, MONTH_PAD, DAY_GAP);
+          mo.weekHdr = WEEK_HDR;
+          mo.cellW = DAY_W;
+          mo.weekStart = weekStart;
+          yr.children.push(mo);
+
+          const lead = (new Date(year, m - 1, 1).getDay() - weekStart + 7) % 7;
+          const days = new Date(year, m, 0).getDate();
+          for (let d = 1; d <= days; d++) {
+            const i = lead + d - 1;
+            const t = { year, month: m, day: d, hour: 0 };
+            const dn = L.node(mo.key + "/d" + d, L.dayLabel(t), L.DEPTH.DAY, t, d, mo);
+            dn.labelLong = L.longLabel(L.DEPTH.DAY, t) + " " + year;
+            place(dn,
+              mo.x + MONTH_PAD + (i % 7) * (DAY_W + DAY_GAP),
+              mo.y + MONTH_HDR + WEEK_HDR + Math.floor(i / 7) * (DAY_H + DAY_GAP),
+              DAY_W, DAY_H, DAY_HDR, DAY_PAD, DAY_INNER_GAP);
+            dn.dayId = dayId(year, m, d);
+            dn.future = new Date(year, m - 1, d).getTime() > todayMs;
+            dn.loaded = false;
+            mo.children.push(dn);
+            root.dayIndex.set(dn.dayId, dn);
+          }
+        }
+      }
+
+      root.x = Number.isFinite(x0) ? x0 : 0;
+      root.y = 0;
+      root.w = Number.isFinite(x1) ? x1 - root.x : YEAR_W;
+      root.h = YEAR_H;
+      resetCounts(root);
+      return root;
+    }
+
+    function place(n, x, y, w, h, hdr, pad, gap) {
+      n.x = x; n.y = y; n.w = w; n.h = h;
+      n.hdr = hdr; n.pad = pad; n.gap = gap;
+      n.fixed = true;
+    }
+
+    /**
+     * The years a calendar should show for these count rows: from the first year
+     * with clips to the last, always including the current year so today exists.
+     */
+    function yearsFor(rows, today = new Date()) {
+      let lo = today.getFullYear();
+      let hi = lo;
+      for (const r of rows) {
+        if (r.year < lo) lo = r.year;
+        if (r.year > hi) hi = r.year;
+      }
+      const out = [];
+      for (let y = lo; y <= hi; y++) out.push(y);
+      return out;
+    }
+
+    // ── Counts ───────────────────────────────────────────────────────────────────
+    function resetCounts(root) {
+      for (const day of root.dayIndex.values()) clearCounts(day);
+      rollUpCounts(root);
+    }
+
+    function clearCounts(n) {
+      n.count = 0;
+      n.cats = {};
+      n.tsMin = Infinity;
+      n.tsMax = -Infinity;
+      n.version = 0;
+      n.sig = "0";
+      n.avgRgb = BG.slice();
+      n.heat = null;
+    }
+
+    /**
+     * Apply getDayCounts rows: {year, month, day, category, n, t0, t1, v, dv}.
+     * Each day gets its count, per-category counts, time span (ms), a heat colour,
+     * and `sig` -- a signature that changes whenever any clip of that day is
+     * added, edited, trashed or restored, which is how index.js knows a loaded day
+     * went stale.
+     */
+    function applyCounts(root, rows) {
+      for (const day of root.dayIndex.values()) clearCounts(day);
+
+      for (const r of rows) {
+        const day = root.dayIndex.get(dayId(r.year, r.month, r.day));
+        if (!day) continue;
+        const cat = CATEGORIES[r.category] ? r.category : TYPE_TO_CATEGORY[r.category] || "code";
+        const n = Number(r.n) || 0;
+        day.count += n;
+        day.cats[cat] = (day.cats[cat] || 0) + n;
+        const t0 = toMs(r.t0);
+        const t1 = toMs(r.t1);
+        if (t0 < day.tsMin) day.tsMin = t0;
+        if (t1 > day.tsMax) day.tsMax = t1;
+        day.version = Math.max(day.version, Number(r.v) || 0, Number(r.dv) || 0);
+      }
+
+      let maxDay = 1;
+      for (const day of root.dayIndex.values()) {
+        if (!day.count) continue;
+        day.sig = day.count + ":" + day.tsMax + ":" + day.version;
+        day.avgRgb = catMix(day.cats);
+        if (day.count > maxDay) maxDay = day.count;
+      }
+      // Heat: how full a day was, in the colour of what was copied. sqrt, so a
+      // one-clip day is still visibly not-empty next to a hundred-clip day.
+      for (const day of root.dayIndex.values()) {
+        if (!day.count) continue;
+        const k = 0.22 + 0.5 * Math.sqrt(day.count / maxDay);
+        day.heat = rgbCss(mix(BG, day.avgRgb, k));
+      }
+      root.maxDayCount = maxDay;
+      rollUpCounts(root);
+    }
+
+    /** Months, years and the root: sums of their days. */
+    function rollUpCounts(root) {
+      (function up(n) {
+        if (n.depth === L.DEPTH.DAY) return;
+        let count = 0;
+        let tsMin = Infinity;
+        let tsMax = -Infinity;
+        const cats = {};
+        for (const k of n.children) {
+          up(k);
+          count += k.count;
+          if (k.tsMin < tsMin) tsMin = k.tsMin;
+          if (k.tsMax > tsMax) tsMax = k.tsMax;
+          for (const id in k.cats) cats[id] = (cats[id] || 0) + k.cats[id];
+        }
+        n.count = count;
+        n.tsMin = tsMin;
+        n.tsMax = tsMax;
+        n.cats = cats;
+        n.avgRgb = count ? catMix(cats) : BG.slice();
+        // Painted when the box is too small to open: the blend of what is inside.
+        n.blockColor = count ? rgbCss(mix(n.avgRgb, BG, 0.45)) : null;
+      })(root);
+    }
+
+    /** Average block colour of a category mix, weighted by count. */
+    function catMix(cats) {
+      let r = 0, g = 0, b = 0, n = 0;
+      for (const id in cats) {
+        const c = CATEGORIES[id] || CATEGORIES.code;
+        const k = cats[id];
+        r += c.blockRgb[0] * k; g += c.blockRgb[1] * k; b += c.blockRgb[2] * k;
+        n += k;
+      }
+      return n ? [r / n, g / n, b / n] : BG.slice();
+    }
+
+    // ── Lookup ───────────────────────────────────────────────────────────────────
+    function dayNode(root, year, month, day) {
+      return root ? root.dayIndex.get(dayId(year, month, day)) || null : null;
+    }
+
+    function dayOf(root, date) {
+      const d = L.toDate(date);
+      return dayNode(root, d.getFullYear(), d.getMonth() + 1, d.getDate());
+    }
+
+    function startOfDay(d) {
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+
+    /** Unix seconds (created_at) or ms, to ms. */
+    function toMs(v) {
+      const n = Number(v) || 0;
+      return n < 1e12 ? n * 1000 : n;
+    }
+
+    module.exports = {
+      buildCalendar, yearsFor, applyCounts, resetCounts, dayNode, dayOf, dayId,
+      GEOMETRY: {
+        EPOCH_YEAR, DAY_W, DAY_H, DAY_GAP, DAY_HDR, DAY_PAD, WEEK_ROWS,
+        MONTH_W, MONTH_H, MONTH_PAD, MONTH_HDR, WEEK_HDR, MONTH_GAP,
+        YEAR_W, YEAR_H, YEAR_PAD, YEAR_HDR, YEAR_GAP, YEAR_STRIDE,
+      },
     };
 
   });
@@ -2094,6 +2377,12 @@
     // None of these ever truncates: every level draws the card's COMPLETE text at
     // the card's own font scale (layout.js), only the level of detail changes.
     //
+    // DAYS ARE CALENDAR CELLS
+    // Years, months and days are the fixed calendar (calendar.js). A day whose
+    // clips are not loaded -- far away, or not yet fetched -- is a heat cell in
+    // the colour of what was copied that day; once loaded it holds its hours and
+    // cards like any other box.
+    //
     // COST IS BOUNDED BY WHAT IS ON SCREEN, NOT BY HOW MUCH YOU HAVE COPIED
     //   - off-screen subtrees are rejected with one rectangle test
     //   - containers smaller than 3px are one flat rect in the blend of their
@@ -2119,6 +2408,11 @@
       hover: "#e8f0f6",
       selected: "#ffcc55",
       now: "#39d98a",
+      dayEmpty: "#0e1319",
+      dayFuture: "#0c1015",
+      dayNumber: "#c3d2de",
+      dayNumberDim: "#4d6072",
+      weekday: "#6d8397",
     };
 
     const FONT_MONO = "ui-monospace, 'Cascadia Mono', Consolas, 'Courier New', monospace";
@@ -2143,6 +2437,7 @@
         this.selectedKey = null;
         this.hoverKey = null;
         this.nowKey = null;
+        this.todayKey = null;
         this.stats = emptyStats();
 
         // Layout reserves 0.6em per character. Real monospace fonts are narrower
@@ -2212,6 +2507,7 @@
 
       // ── Containers: year / month / day / hour ──────────────────────────────────
       drawContainer(n, sx, sy, sw, sh) {
+        if (n.depth === L.DEPTH.DAY) { this.drawDay(n, sx, sy, sw, sh); return; }
         const ctx = this.ctx;
         const d = n.depth < 0 ? 0 : Math.min(3, n.depth);
 
@@ -2247,6 +2543,132 @@
         }
 
         this.drawContainerLabel(n, sx, sy, sw);
+        if (n.depth === L.DEPTH.MONTH) this.drawWeekdays(n, sx, sy);
+      }
+
+      /** Sun Mon Tue ... over a month's day columns. */
+      drawWeekdays(n, sx, sy) {
+        const s = this.vp.scale;
+        const rowPx = n.weekHdr * s;
+        const fontPx = Math.min(rowPx * 0.5, 15);
+        if (fontPx < 6.5) return;
+        const ctx = this.ctx;
+        const cellPx = n.cellW * s;
+        const long = cellPx > fontPx * 3.2;
+        ctx.save();
+        ctx.font = "600 " + fontPx.toFixed(1) + "px " + FONT_SANS;
+        ctx.fillStyle = this.theme.weekday;
+        ctx.textBaseline = "middle";
+        const cy = sy + (n.hdr + n.weekHdr * 0.55) * s;
+        for (let c = 0; c < 7; c++) {
+          const wd = (n.weekStart + c) % 7;
+          const label = long ? L.WEEKDAY_SHORT[wd] : L.WEEKDAY_SHORT[wd][0];
+          const x = sx + (n.pad + c * (n.cellW + n.gap)) * s;
+          ctx.fillText(label, x + Math.min(8, cellPx * 0.06), cy);
+        }
+        ctx.restore();
+      }
+
+      // ── Days: calendar cells ───────────────────────────────────────────────────
+      drawDay(n, sx, sy, sw, sh) {
+        const ctx = this.ctx;
+        const hasClips = n.count > 0;
+        const open = n.loaded && n.children.length > 0;
+
+        let fill;
+        if (!hasClips) fill = n.future ? this.theme.dayFuture : this.theme.dayEmpty;
+        else fill = open && sw >= RECURSE_MIN_PX ? this.theme.container[2] : n.heat;
+        ctx.fillStyle = fill;
+        ctx.fillRect(sx, sy, sw, sh);
+        this.stats.days++;
+        if (sw < RECURSE_MIN_PX || sh < RECURSE_MIN_PX) { this.stats.collapsed++; return; }
+
+        if (open) for (const kid of n.children) this.drawNode(kid);
+
+        const hovered = this.hoverKey === n.key;
+        if (sw > 6 && sh > 6 && (hasClips || hovered)) {
+          ctx.strokeStyle = hovered ? this.theme.hover : this.theme.containerEdge[2];
+          ctx.lineWidth = hovered ? 1.5 : 1;
+          ctx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1);
+        }
+        if (this.todayKey === n.key && sw > 4 && sh > 4) {
+          ctx.strokeStyle = this.theme.now;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(sx + 1, sy + 1, sw - 2, sh - 2);
+        }
+        this.drawDayLabel(n, sx, sy, sw, sh, open);
+      }
+
+      /**
+       * The day's number, like a wall calendar -- in the header band once that is
+       * big enough to read, with the weekday and clip count as room allows; before
+       * that, sized to the cell, over the heat colour or the mosaic.
+       */
+      drawDayLabel(n, sx, sy, sw, sh, open) {
+        const s = this.vp.scale;
+        const ctx = this.ctx;
+        const hdrPx = n.hdr * s;
+        const padPx = n.pad * s;
+        const today = this.todayKey === n.key;
+        const numColor = today ? this.theme.now
+          : n.count > 0 ? this.theme.dayNumber : this.theme.dayNumberDim;
+
+        const bandFont = Math.min(hdrPx * 0.6, 30);
+        if (bandFont >= 8) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(sx, sy, sw, hdrPx);
+          ctx.clip();
+          ctx.textBaseline = "middle";
+          const cy = sy + Math.min(hdrPx, bandFont * 1.7) / 2;
+          const room = sw - padPx * 2;
+          ctx.font = (n.count ? "600 " : "") + bandFont.toFixed(1) + "px " + FONT_SANS;
+          const full = n.labelLong;
+          const label = ctx.measureText(full).width < room * 0.62 ? full
+            : ctx.measureText(n.label).width < room * 0.62 ? n.label : String(n.time.day);
+          ctx.fillStyle = numColor;
+          ctx.fillText(label, sx + padPx, cy);
+          const used = ctx.measureText(label).width;
+          if (n.count) {
+            ctx.font = (bandFont * 0.8).toFixed(1) + "px " + FONT_SANS;
+            const badge = n.count.toLocaleString() + (n.count === 1 ? " clip" : " clips");
+            const bw = ctx.measureText(badge).width;
+            if (used + bandFont + bw < room) {
+              ctx.fillStyle = this.theme.labelDim;
+              ctx.fillText(badge, sx + sw - padPx - bw, cy);
+            }
+          }
+          ctx.restore();
+          this.stats.labels++;
+          return;
+        }
+
+        // Too small for the band: the bare number, scaled to the cell.
+        const fontPx = Math.min(sh * 0.3, sw * 0.26, 18);
+        if (fontPx < 7) return;
+        const label = String(n.time.day);
+        ctx.save();
+        ctx.font = (n.count ? "600 " : "") + fontPx.toFixed(1) + "px " + FONT_SANS;
+        ctx.textBaseline = "top";
+        const x = sx + Math.max(2, sw * 0.06);
+        const y = sy + Math.max(1, sh * 0.05);
+        if (open) {
+          // Over the mosaic the number needs its own backing to stay legible.
+          const w = ctx.measureText(label).width;
+          ctx.fillStyle = "rgba(11,15,20,0.72)";
+          ctx.fillRect(x - 2, y - 1, w + 4, fontPx * 1.15);
+        }
+        ctx.fillStyle = numColor;
+        ctx.fillText(label, x, y);
+        if (!open && n.count && fontPx >= 9 && sh > fontPx * 3) {
+          ctx.font = (fontPx * 0.78).toFixed(1) + "px " + FONT_SANS;
+          ctx.fillStyle = this.theme.labelDim;
+          ctx.textBaseline = "bottom";
+          const c = String(n.count);
+          ctx.fillText(c, sx + sw - Math.max(3, sw * 0.08) - ctx.measureText(c).width, sy + sh - Math.max(2, sh * 0.06));
+        }
+        ctx.restore();
+        this.stats.labels++;
       }
 
       drawContainerLabel(n, sx, sy, sw) {
@@ -2535,16 +2957,19 @@
           tw = Math.max(2, Math.round(TEX_MAX * n.body.w / n.body.h));
         }
 
-        let bmp = this.textures.get(n.key, tw);
+        // texKey, not key: it changes when the card's day is laid out again, and
+        // a texture painted for the card's old shape must not be reused.
+        const key = n.texKey || n.key;
+        let bmp = this.textures.get(key, tw);
         if (!bmp) {
           if (performance.now() < this.texDeadline) {
-            bmp = this.textures.make(n.key, tw, tw, th, (tctx, w, h) => this.paintTexture(tctx, n, w, h));
+            bmp = this.textures.make(key, tw, tw, th, (tctx, w, h) => this.paintTexture(tctx, n, w, h));
             this.stats.texturesMade++;
           } else {
             // Out of budget this frame: use any size already painted, and ask the
             // frame loop to come back for the rest.
             this.texStarved = true;
-            bmp = this.textures.getAny(n.key);
+            bmp = this.textures.getAny(key);
           }
         }
 
@@ -2662,7 +3087,7 @@
 
     function emptyStats() {
       return {
-        boxes: 0, cards: 0, labels: 0, culled: 0, collapsed: 0,
+        boxes: 0, days: 0, cards: 0, labels: 0, culled: 0, collapsed: 0,
         linesDrawn: 0, linesTotal: 0, thumbs: 0, thumbPending: 0,
         textures: 0, texturesMade: 0, needsMore: false,
         ms: 0, level: "", zoomLabel: "", scale: 1,
@@ -2687,7 +3112,7 @@
     //   double-click     fly into the box under the cursor
     //   right-click      fly back out one level
     //   F / Home         fit everything        + / -   zoom        arrows   pan
-    //   Backspace        fly out one level
+    //   T                today                 Backspace   fly out one level
     //
     // Wheel direction is unchanged from the DOM version (deltaY > 0 zooms out),
     // which is what scratch/verify-time-zoom.js asserts.
@@ -2705,7 +3130,7 @@
       /**
        * @param {HTMLCanvasElement} canvas
        * @param {Viewport} vp
-       * @param {object} hooks  { onChange, getTree, pick, onPick, onHover }
+       * @param {object} hooks  { onChange, getTree, pick, onPick, onHover, onFit, onToday }
        */
       constructor(canvas, vp, hooks = {}) {
         this.canvas = canvas;
@@ -2908,11 +3333,8 @@
 
         const center = { x: this.vp.width / 2, y: this.vp.height / 2 };
         switch (e.key) {
-          case "f": case "F": case "Home": {
-            const tree = this.tree();
-            if (tree) this.fit(tree);
-            break;
-          }
+          case "f": case "F": case "Home": this.fitAll(); break;
+          case "t": case "T": if (this.hooks.onToday) this.hooks.onToday(); break;
           case "+": case "=": this.zoomToward(KEY_ZOOM, center); break;
           case "-": case "_": this.zoomToward(1 / KEY_ZOOM, center); break;
           case "ArrowLeft": this.panAnimated(this.vp.width * KEY_PAN, 0); break;
@@ -2964,7 +3386,15 @@
         for (let a = this.pickAt(at); a; a = a.parent) {
           if (a.w * this.vp.scale > W || a.h * this.vp.scale > H) { target = a; break; }
         }
-        this.fit(target || tree);
+        if (target) this.fit(target);
+        else this.fitAll();
+      }
+
+      /** Everything worth seeing -- the owner decides what that is (onFit). */
+      fitAll() {
+        if (this.hooks.onFit) { this.hooks.onFit(); return; }
+        const tree = this.tree();
+        if (tree) this.fit(tree);
       }
 
       /**
@@ -3029,10 +3459,9 @@
     // ─── src/renderer/canvas/timelinestrip.js ────────────────────────────────────
     // The time axis, drawn as a strip under the canvas.
     //
-    // The treemap keeps everything in time order, but a treemap cannot show the
-    // calendar: a quiet week and a missing week look the same once the days are
-    // packed into boxes. This strip lays every calendar day from your first clip
-    // to your last side by side -- empty days included, so gaps in your history
+    // The canvas is a calendar of months, which shows a week at a glance but not
+    // the rhythm of a whole history. This strip lays every day from your first
+    // clip to today side by side -- empty days included, so gaps in your history
     // show as gaps -- with a bar for how much you copied that day.
     //
     // It also answers "where am I?": the days currently on the canvas are lit, so
@@ -3080,6 +3509,7 @@
           for (const y of tree.children) {
             for (const m of y.children) {
               for (const d of m.children) {
+                if (!d.count) continue;
                 const t = d.time;
                 found.push({ date: new Date(t.year, t.month - 1, t.day), node: d });
               }
@@ -3090,7 +3520,9 @@
         if (found.length) {
           found.sort((a, b) => a.date - b.date);
           const byDay = new Map(found.map((f) => [dayKey(f.date), f.node]));
-          const last = found[found.length - 1].date;
+          const today = new Date();
+          const lastFound = found[found.length - 1].date;
+          const last = lastFound > today ? lastFound : new Date(today.getFullYear(), today.getMonth(), today.getDate());
           // setDate steps calendar days, so this is DST-safe.
           for (let d = new Date(found[0].date); d <= last; d.setDate(d.getDate() + 1)) {
             const node = byDay.get(dayKey(d)) || null;
@@ -3283,12 +3715,22 @@
 
   define("index", function (module, exports, require) {
     // ─── src/renderer/canvas/index.js ────────────────────────────────────────────
-    // Mounts the Time Canvas and owns the frame loop.
+    // Mounts the Time Canvas, owns the frame loop, and loads days as you reach them.
     //
     // The loop is DIRTY-DRIVEN: it draws only when something changed -- a pan, a
     // zoom step, new data, a thumbnail landing, or card textures still waiting for
     // frame budget. An idle canvas costs zero frames, which matters for a utility
     // that sits on the desktop all day.
+    //
+    // DATA ARRIVES IN TWO SIZES, LIKE A MAP
+    //   counts  clips per day per category, for the whole history: one small query
+    //           (source.dayCounts). Enough to draw every day of every year.
+    //   days    full clips, only for days whose cell is big enough on screen to
+    //           show them (source.forDays), nearest the middle of the screen first,
+    //           one request at a time. Days far off screen are dropped again once
+    //           more than MAX_LOADED_CLIPS are held.
+    // A new copy refreshes the counts; only days whose signature changed (in
+    // practice: today) are reloaded, and nothing else on the canvas moves.
     // ─────────────────────────────────────────────────────────────────────────────
 
     const { Viewport } = require("./viewport");
@@ -3296,12 +3738,18 @@
     const { Controls } = require("./controls");
     const { ImageCache } = require("./imagecache");
     const { TextureCache } = require("./texturecache");
-    const { buildTree, layoutAuto, hourKey } = require("./layout");
-    const { clearCaches, cacheStats } = require("./textlayout");
-    const { clearTokenCache } = require("./tokens");
+    const { fillDay, emptyDay, hourKey, timeParts, toDate } = require("./layout");
+    const Cal = require("./calendar");
     const { describeNode } = require("./describe");
     const { mountTimelineStrip } = require("./timelinestrip");
-    const { CATEGORY_LIST, CATEGORIES } = require("./classify");
+    const { CATEGORY_LIST, CATEGORIES, categoryOf } = require("./classify");
+
+    const LOAD_MIN_PX = 26;          // a day cell at least this wide on screen loads its clips
+    const BATCH_MAX_DAYS = 60;       // days per forDays request
+    const BATCH_MAX_CLIPS = 4000;    // clips per forDays request (a bigger day still loads alone)
+    const MAX_LOADED_CLIPS = 40000;  // beyond this, off-screen days are dropped
+    const PUMP_DELAY_MS = 40;
+    const BASE_MAX_ZOOM = 8;
 
     /**
      * @param {HTMLElement} host      container element (sized by CSS)
@@ -3323,13 +3771,24 @@
       const textures = new TextureCache();
       const renderer = new Renderer2D(canvas, { imageCache: images, textureCache: textures });
 
-      let tree = null;
-      let layoutInfo = null;
+      let root = Cal.buildCalendar(Cal.yearsFor([]));
+      let source = null;
+      let sourceGen = 0;      // bumps on every setSource; stale replies are dropped
+      let countsReady = false;
       let dirty = true;
       let raf = null;
       let lastStats = null;
       const frameListeners = new Set();
       const dataListeners = new Set();
+
+      // Loading state.
+      const loaded = new Map();   // dayId -> { day, clips, seen, fit }
+      let loadedClips = 0;
+      let inflight = null;        // Promise of the request in flight
+      let pumpTimer = null;
+      let layoutGen = 0;
+      let idleWaiters = [];
+      let lastError = null;
 
       // ── Frame loop ─────────────────────────────────────────────────────────────
       function invalidate() {
@@ -3339,41 +3798,28 @@
 
       function frame() {
         raf = null;
-        if (!dirty || !tree) return;
+        if (!dirty) return;
         dirty = false;
-        lastStats = renderer.draw(tree, vp);
+        lastStats = renderer.draw(root, vp);
+        lastStats.loadedDays = loaded.size;
+        lastStats.loadedClips = loadedClips;
         if (opts.onFrame) opts.onFrame(lastStats);
         for (const fn of frameListeners) fn(lastStats);
         // Card textures are painted under a per-frame time budget; if some missed
         // it, come straight back for them. Settles as soon as all are painted.
         if (lastStats.needsMore) invalidate();
+        schedulePump();
       }
 
       // ── Sizing ─────────────────────────────────────────────────────────────────
-      // The canvas aspect is baked in at layout time. A large aspect change (a
-      // narrow pane at first paint, a window dragged much wider) re-lays out --
-      // debounced, and never moving the camera: resizing is not a request to go
-      // somewhere else.
-      const RELAYOUT_ASPECT_FACTOR = 1.3;
-      let lastAspect = 0;
-      let lastClips = null;
-      let relayoutTimer = null;
-
+      // The calendar is fixed, so a resize never re-lays anything out and never
+      // moves the camera: resizing is not a request to go somewhere else.
       function resize() {
         const r = host.getBoundingClientRect();
         const w = Math.max(1, Math.floor(r.width));
         const h = Math.max(1, Math.floor(r.height));
         renderer.resize(w, h);
         vp.resize(w, h);
-
-        const aspect = w / h;
-        if (tree && lastAspect > 0) {
-          const drift = aspect > lastAspect ? aspect / lastAspect : lastAspect / aspect;
-          if (drift > RELAYOUT_ASPECT_FACTOR) {
-            clearTimeout(relayoutTimer);
-            relayoutTimer = setTimeout(() => { if (lastClips) setClips(lastClips, { keepView: true }); }, 250);
-          }
-        }
         invalidate();
       }
 
@@ -3381,50 +3827,300 @@
       ro.observe(host);
 
       // ── Data ───────────────────────────────────────────────────────────────────
-      function setClips(clips, { keepView = false } = {}) {
-        const snap = vp.snapshot();
-        lastClips = clips || [];
-        tree = buildTree(lastClips);
-
-        const aspect = vp.width && vp.height ? vp.width / vp.height : 1.6;
-        lastAspect = aspect;
-        layoutInfo = layoutAuto(tree, { aspect });
-        vp.maxScale = layoutInfo.maxZoom;
-
-        // Geometry changed, so painted textures and wrapped lines are stale.
-        textures.clear();
-        clearTokenCache();
-        clearCaches();
-
-        renderer.nowKey = hourKey(new Date());
-        renderer.hoverKey = null;
-
-        if (keepView) vp.restore(snap);
-        else fitAll(false);
-
-        for (const fn of dataListeners) fn(tree);
+      /**
+       * Point the canvas at a data source:
+       *   { dayCounts: () => Promise<rows>, forDays: (days) => Promise<[{year, month, day, clips}]> }
+       * Loaded days are dropped (the source is a different filter or workspace),
+       * but the calendar is not rebuilt, so `view: "keep"` stays on the same date.
+       * @param {"today"|"fit"|"keep"} [o.view]
+       */
+      async function setSource(src, { view = "keep" } = {}) {
+        source = src;
+        sourceGen++;
+        countsReady = false;
+        unloadAll();
+        renderer.selectedKey = null;
+        const ok = await refreshCounts();
+        if (!ok) return false;
+        if (view === "today") showToday(false);
+        else if (view === "fit") fitAll(false);
         invalidate();
-        return layoutInfo;
+        return true;
       }
 
-      function fitAll(animate = true) {
-        if (!tree) return;
-        if (animate) { controls.fit(tree); return; }
-        vp.fitTo({ x0: tree.x, y0: tree.y, x1: tree.x + tree.w, y1: tree.y + tree.h }, 24);
+      /**
+       * Re-read the counts. Call after anything that changes clips (a capture, an
+       * edit, a delete). Only loaded days whose signature changed are reloaded.
+       */
+      async function refreshCounts() {
+        if (!source) return false;
+        const gen = sourceGen;
+        let rows;
+        try {
+          rows = await source.dayCounts();
+        } catch (err) {
+          lastError = err;
+          console.error("[timecanvas] dayCounts failed:", err);
+          return false;
+        }
+        if (gen !== sourceGen) return false;
+
+        const years = Cal.yearsFor(rows || []);
+        if (years.join() !== root.years.join()) {
+          // A new year at either end (or a first launch). Existing years keep
+          // their places -- they are anchored to the year number -- so only the
+          // loaded clips need re-attaching, which the pump does.
+          unloadAll();
+          root = Cal.buildCalendar(years);
+        }
+        Cal.applyCounts(root, rows || []);
+        countsReady = true;
+
+        // Stale or emptied days: reload if on screen (the pump does), else drop.
+        const view = vp.worldBounds();
+        for (const entry of Array.from(loaded.values())) {
+          const d = entry.day;
+          if (d.loadedSig === d.sig) continue;
+          if (!d.count || !intersects(d, view)) unload(d);
+        }
+
+        markNow();
+        for (const fn of dataListeners) fn(root);
         invalidate();
+        schedulePump();
+        return true;
+      }
+
+      function schedulePump() {
+        if (pumpTimer != null || !source || !countsReady) return;
+        pumpTimer = setTimeout(pump, PUMP_DELAY_MS);
+      }
+
+      /** Days on screen, big enough to show clips, that are not loaded or are stale. */
+      function wantedDays() {
+        const view = vp.worldBounds();
+        const cx = (view.x0 + view.x1) / 2;
+        const cy = (view.y0 + view.y1) / 2;
+        const now = performance.now();
+        const out = [];
+        if (Cal.GEOMETRY.DAY_W * vp.scale < LOAD_MIN_PX) return out;
+        for (const yr of root.children) {
+          if (!intersects(yr, view)) continue;
+          for (const mo of yr.children) {
+            if (!intersects(mo, view)) continue;
+            for (const d of mo.children) {
+              if (!d.count || !intersects(d, view)) continue;
+              const entry = loaded.get(d.dayId);
+              if (entry) entry.seen = now;
+              if (entry && d.loadedSig === d.sig) continue;
+              const dx = d.x + d.w / 2 - cx;
+              const dy = d.y + d.h / 2 - cy;
+              out.push({ day: d, dist: dx * dx + dy * dy });
+            }
+          }
+        }
+        out.sort((a, b) => a.dist - b.dist);
+        return out.map((o) => o.day);
+      }
+
+      async function pump() {
+        pumpTimer = null;
+        if (!source || !countsReady || inflight) return;
+
+        const want = wantedDays();
+        if (!want.length) {
+          evict();
+          settleIdle();
+          return;
+        }
+
+        const batch = [];
+        let clips = 0;
+        for (const d of want) {
+          if (batch.length && (batch.length >= BATCH_MAX_DAYS || clips + d.count > BATCH_MAX_CLIPS)) break;
+          batch.push(d);
+          clips += d.count;
+        }
+        await loadDays(batch);
+        evict();
+        schedulePump();
+      }
+
+      /**
+       * Fetch and lay out these days. Requests run one at a time, in order.
+       * Resolves (never rejects) once they are on the canvas.
+       */
+      function loadDays(days) {
+        const gen = sourceGen;
+        const req = days.map((d) => ({ year: d.time.year, month: d.time.month, day: d.time.day }));
+        const run = async () => {
+          if (gen !== sourceGen || !source) return;
+          try {
+            const res = await source.forDays(req);
+            if (gen !== sourceGen) return;
+            layoutGen++;
+            for (const r of res || []) {
+              const d = Cal.dayNode(root, r.year, r.month, r.day);
+              if (d) attach(d, r.clips || []);
+            }
+          } catch (err) {
+            lastError = err;
+            console.error("[timecanvas] loading days failed:", err);
+          }
+          invalidate();
+        };
+        const p = (inflight || Promise.resolve()).then(run);
+        const tracked = p.then(() => { if (inflight === tracked) inflight = null; });
+        inflight = tracked;
+        return p;
+      }
+
+      function attach(d, clips) {
+        const prev = loaded.get(d.dayId);
+        if (prev) loadedClips -= prev.clips;
+        const fit = fillDay(d, clips);
+        // Texture keys carry the layout generation: a reloaded day's cards may
+        // have new shapes, and a texture painted for the old shape must not be reused.
+        const tag = "#" + layoutGen;
+        (function walk(n) {
+          if (n.clip) { n.texKey = n.key + tag; return; }
+          for (const k of n.children) walk(k);
+        })(d);
+        d.loaded = true;
+        d.loadedSig = d.sig;
+        loaded.set(d.dayId, { day: d, clips: clips.length, seen: performance.now(), fit });
+        loadedClips += clips.length;
+        raiseMaxZoom(fit.maxZoom);
+      }
+
+      function unload(d) {
+        const entry = loaded.get(d.dayId);
+        if (!entry) return;
+        loaded.delete(d.dayId);
+        loadedClips -= entry.clips;
+        emptyDay(d);
+        d.loaded = false;
+        d.loadedSig = null;
+        if (renderer.selectedKey && renderer.selectedKey.startsWith("c")) {
+          // The selection may have been in this day; the card is gone either way.
+          if (!findLeafByKey(root, renderer.selectedKey)) renderer.selectedKey = null;
+        }
+      }
+
+      function unloadAll() {
+        for (const entry of Array.from(loaded.values())) unload(entry.day);
+        loadedClips = 0;
+        vp.maxScale = Math.max(BASE_MAX_ZOOM, vp.scale);
+      }
+
+      /** Over budget: drop the days seen longest ago that are not on screen. */
+      function evict() {
+        if (loadedClips <= MAX_LOADED_CLIPS) return;
+        const view = vp.worldBounds();
+        const off = Array.from(loaded.values())
+          .filter((e) => !intersects(e.day, view))
+          .sort((a, b) => a.seen - b.seen);
+        for (const e of off) {
+          if (loadedClips <= MAX_LOADED_CLIPS * 0.8) break;
+          unload(e.day);
+        }
+      }
+
+      function raiseMaxZoom(z) {
+        if (z > vp.maxScale) vp.maxScale = z;
+      }
+
+      function settleIdle() {
+        if (inflight || pumpTimer != null) return;
+        const w = idleWaiters;
+        idleWaiters = [];
+        for (const fn of w) fn();
+      }
+
+      /** Resolves once every day on screen that should be loaded is. For harnesses. */
+      function whenIdle() {
+        return new Promise((resolve) => {
+          idleWaiters.push(resolve);
+          schedulePump();
+          invalidate();
+        });
+      }
+
+      // ── Now ────────────────────────────────────────────────────────────────────
+      // The current hour and today stay marked, per the roadmap. Checked every
+      // minute, so the marker moves on when the hour does; a new day re-reads the
+      // counts (yesterday is no longer "today", and the future is one day shorter).
+      let todayId = null;
+      function markNow() {
+        const now = new Date();
+        renderer.nowKey = hourKey(now);
+        const d = Cal.dayOf(root, now);
+        renderer.todayKey = d ? d.key : null;
+        const id = d ? d.dayId : null;
+        const changed = todayId !== null && id !== todayId;
+        todayId = id;
+        return changed;
+      }
+      const nowTimer = setInterval(() => {
+        const prev = renderer.nowKey;
+        if (markNow()) refreshCounts();
+        else if (renderer.nowKey !== prev) invalidate();
+      }, 60000);
+
+      // ── Camera ─────────────────────────────────────────────────────────────────
+      function fitAll(animate = true) {
+        const target = contentBounds();
+        if (animate) { controls.fit(target); return; }
+        vp.fitTo({ x0: target.x, y0: target.y, x1: target.x + target.w, y1: target.y + target.h }, 24);
+        invalidate();
+      }
+
+      /** The years that have clips (all of them when nothing does). */
+      function contentBounds() {
+        const withClips = root.children.filter((y) => y.count > 0);
+        const ys = withClips.length ? withClips : root.children;
+        const x0 = Math.min(...ys.map((y) => y.x));
+        const x1 = Math.max(...ys.map((y) => y.x + y.w));
+        return { x: x0, y: root.y, w: x1 - x0, h: root.h };
+      }
+
+      function showToday(animate = true) {
+        const d = Cal.dayOf(root, new Date());
+        if (!d) return fitAll(animate);
+        if (animate) controls.flyTo(d);
+        else { vp.fitTo({ x0: d.x, y0: d.y, x1: d.x + d.w, y1: d.y + d.h }, 24); invalidate(); }
+      }
+
+      /**
+       * Fly to a clip, loading its day first if needed, and select it. `clip` is
+       * any row with id and created_at (a search result, say).
+       * @returns {Promise<object|null>} the clip's node
+       */
+      async function reveal(clip) {
+        const t = timeParts(clip, toDate(clip.created_at));
+        const d = Cal.dayNode(root, t.year, t.month, t.day);
+        if (!d) return null;
+        if (!d.loaded || d.loadedSig !== d.sig) await loadDays([d]);
+        const leaf = findLeafByKey(d, "c" + clip.id);
+        if (!leaf) { controls.flyTo(d); return null; }
+        controls.flyTo(leaf);
+        select(leaf);
+        return leaf;
+      }
+
+      function select(node) {
+        const clipNode = node && node.clip ? node : null;
+        renderer.selectedKey = clipNode ? clipNode.key : null;
+        invalidate();
+        if (opts.onSelect) opts.onSelect(clipNode ? clipNode.clip : null, clipNode);
       }
 
       // ── Input ──────────────────────────────────────────────────────────────────
       const controls = new Controls(canvas, vp, {
         onChange: invalidate,
-        getTree: () => tree,
+        getTree: () => root,
         pick: (t, wx, wy) => renderer.pick(t, wx, wy),
-        onPick: (node) => {
-          const clipNode = node && node.clip ? node : null;
-          renderer.selectedKey = clipNode ? clipNode.key : null;
-          invalidate();
-          if (opts.onSelect) opts.onSelect(clipNode ? clipNode.clip : null, clipNode);
-        },
+        onPick: (node) => select(node),
         onHover: (node) => {
           const key = node ? node.key : null;
           if (key !== renderer.hoverKey) {
@@ -3433,49 +4129,126 @@
           }
           if (opts.onHover) opts.onHover(node);
         },
+        onFit: () => fitAll(true),
+        onToday: () => showToday(true),
       });
 
+      markNow();
       resize();
-      if (opts.clips) setClips(opts.clips);
+      showToday(false);
 
       return {
         canvas, viewport: vp, renderer, controls, images, textures,
         categories: CATEGORY_LIST,
         categoryById: CATEGORIES,
-        setClips,
+        setSource,
+        /** Show an in-memory list of clips (the demo, the harnesses). */
+        setClips: (clips, o) => setSource(memorySource(clips), o),
+        refresh: refreshCounts,
+        reveal,
+        select,
         invalidate,
         fitAll,
+        showToday,
+        whenIdle,
         flyTo: (node) => controls.flyTo(node),
         flyOut: () => controls.flyOut(),
-        getTree: () => tree,
-        getLayout: () => layoutInfo,
+        getTree: () => root,
+        dayNode: (y, m, d) => Cal.dayNode(root, y, m, d),
         /** The box that currently frames the view -- "where am I". */
-        framed: () => (tree ? renderer.framedNode(tree, vp) : null),
+        framed: () => renderer.framedNode(root, vp),
         describe: describeNode,
         /** Subscribe to every drawn frame. Returns an unsubscribe function. */
         onFrame(fn) { frameListeners.add(fn); return () => frameListeners.delete(fn); },
-        /** Subscribe to data changes (setClips). Returns an unsubscribe function. */
+        /** Subscribe to data changes (new counts). Returns an unsubscribe function. */
         onData(fn) { dataListeners.add(fn); return () => dataListeners.delete(fn); },
         stats: () => ({
-          frame: lastStats, layout: layoutInfo,
-          text: cacheStats(), images: images.stats(), textures: textures.stats(),
+          frame: lastStats,
+          loaded: loadedSummary(),
+          images: images.stats(), textures: textures.stats(),
+          error: lastError ? String(lastError.message || lastError) : null,
         }),
         destroy() {
           ro.disconnect();
+          clearInterval(nowTimer);
+          clearTimeout(pumpTimer);
           controls.destroy();
           images.clear();
           textures.clear();
-          clearTokenCache();
-          clearCaches();
           if (raf != null) cancelAnimationFrame(raf);
           frameListeners.clear();
           dataListeners.clear();
           canvas.remove();
         },
       };
+
+      /** What is loaded, and how well its text fits -- the old getLayout(), per day. */
+      function loadedSummary() {
+        let minFontScale = 1, worstOverflow = 0, failed = 0, clips = 0;
+        for (const e of loaded.values()) {
+          clips += e.clips;
+          failed += e.fit.failed;
+          if (e.fit.minFontScale < minFontScale) minFontScale = e.fit.minFontScale;
+          if (e.fit.worstOverflow > worstOverflow) worstOverflow = e.fit.worstOverflow;
+        }
+        return { days: loaded.size, clips, minFontScale, worstOverflow, failed, maxZoom: vp.maxScale };
+      }
     }
 
-    module.exports = { mountTimeCanvas, mountTimelineStrip, describeNode };
+    function intersects(n, v) {
+      return !(n.x > v.x1 || n.y > v.y1 || n.x + n.w < v.x0 || n.y + n.h < v.y0);
+    }
+
+    function findLeafByKey(n, key) {
+      if (n.key === key) return n;
+      for (const k of n.children) {
+        const hit = findLeafByKey(k, key);
+        if (hit) return hit;
+      }
+      return null;
+    }
+
+    /**
+     * A data source over an array of clip rows, answering the same two questions
+     * the app asks the database. For the demo and the headless checks.
+     */
+    function memorySource(clips) {
+      const byDay = new Map();
+      for (const clip of clips || []) {
+        const t = timeParts(clip, toDate(clip.created_at));
+        const id = Cal.dayId(t.year, t.month, t.day);
+        let list = byDay.get(id);
+        if (!list) byDay.set(id, (list = []));
+        list.push(clip);
+      }
+      const secs = (c) => Math.floor(toDate(c.created_at).getTime() / 1000);
+      for (const list of byDay.values()) list.sort((a, b) => secs(a) - secs(b) || a.id - b.id);
+
+      return {
+        async dayCounts() {
+          const rows = [];
+          for (const list of byDay.values()) {
+            const t = timeParts(list[0], toDate(list[0].created_at));
+            const per = new Map();
+            for (const c of list) {
+              const cat = c.category || categoryOf(c).id;
+              let r = per.get(cat);
+              if (!r) per.set(cat, (r = { year: t.year, month: t.month, day: t.day, category: cat, n: 0, t0: Infinity, t1: 0, v: 0, dv: 0 }));
+              r.n++;
+              r.t0 = Math.min(r.t0, secs(c));
+              r.t1 = Math.max(r.t1, secs(c));
+            }
+            rows.push(...per.values());
+          }
+          return rows;
+        },
+        async forDays(days) {
+          return days.map((d) => ({ ...d, clips: byDay.get(Cal.dayId(d.year, d.month, d.day)) || [] }));
+        },
+      };
+    }
+
+    module.exports = { mountTimeCanvas, mountTimelineStrip, describeNode, memorySource };
 
   });
 
