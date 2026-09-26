@@ -24,7 +24,8 @@
   const $ = (id) => document.getElementById(id);
   const el = {
     workspace: $("workspace"), board: $("board"), filter: $("filter"),
-    search: $("search"), today: $("today"), fit: $("fit"), reload: $("reload"), status: $("status"),
+    search: $("search"), today: $("today"), fit: $("fit"), reload: $("reload"),
+    capture: $("capture"), status: $("status"),
     stage: $("time-container"), hud: $("hud"), details: $("details"),
     results: $("results"), empty: $("empty"), legend: $("legend"), timeline: $("timeline"),
     infoPath: $("info-path"), infoTitle: $("info-title"),
@@ -45,6 +46,7 @@
   let searchSeq = 0;
   let hits = [];
   let activeHit = -1;
+  let paused = false;
 
   init().catch(fatal);
 
@@ -68,7 +70,7 @@
     window.__tc = tc;
 
     wireEvents();
-    await loadWorkspaces();
+    await Promise.all([loadWorkspaces(), loadCaptureState()]);
     // The app opens on today: the current day is the working place, and the
     // rest of history is one zoom-out away (planning/chat-decisions.md).
     await tc.setSource(makeSource(), { view: "today" });
@@ -142,6 +144,25 @@
     let n = 0;
     for (const d of root.dayIndex.values()) if (d.count) n++;
     return n;
+  }
+
+  // ── Capture state ──────────────────────────────────────────────────────────
+  async function loadCaptureState() {
+    try {
+      const s = await api.capture.state();
+      setPausedUi(!!(s && s.paused));
+    } catch (_) {
+      el.capture.hidden = true; // an older main process without the channel
+    }
+  }
+
+  function setPausedUi(p) {
+    paused = p;
+    el.capture.textContent = p ? "Capture paused" : "Capturing";
+    el.capture.classList.toggle("paused", p);
+    el.capture.title = p
+      ? "Nothing you copy is being saved. Click to resume."
+      : "Everything you copy is saved. Click to pause.";
   }
 
   // ── Info panel ─────────────────────────────────────────────────────────────
@@ -354,6 +375,12 @@
     el.reload.addEventListener("click", resource);
     el.fit.addEventListener("click", () => tc.fitAll(true));
     el.today.addEventListener("click", () => tc.showToday(true));
+
+    el.capture.addEventListener("click", async () => {
+      const s = await api.capture.setPaused(!paused);
+      setPausedUi(!!(s && s.paused));
+    });
+    api.on("capture:changed", (s) => setPausedUi(!!(s && s.paused)));
 
     el.search.addEventListener("input", searchSoon);
     el.search.addEventListener("keydown", (e) => {

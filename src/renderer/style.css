@@ -13,6 +13,7 @@
   --accent: #6fa8dc;
   --ok: #39d98a;
   --danger: #e06c75;
+  --warn: #e5b454;
   --mono: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
   --timeline-h: 58px;
 }
@@ -75,6 +76,19 @@ button.danger:hover { border-color: var(--danger); color: var(--danger); }
 button.on { border-color: var(--ok); color: var(--ok); }
 
 #search { min-width: 220px; flex: 0 1 300px; }
+
+/* Capture state: green while recording, amber when paused -- paused capture
+   is easy to forget, and a clipboard manager that silently stops is useless. */
+button.capture { display: flex; align-items: center; gap: 6px; }
+button.capture::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+button.capture.paused { color: var(--warn); border-color: var(--warn); }
+button.capture.paused::before { background: var(--warn); }
 .spacer { flex: 1 1 auto; }
 
 #status {
