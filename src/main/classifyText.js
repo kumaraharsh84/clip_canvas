@@ -16,6 +16,7 @@
 
 const {
   looksLikeTerminal, looksLikeProse, startsLikeSource, looksLikeSql, scoreLanguage,
+  detect, CLASSIFIER_VERSION,
 } = require("../renderer/canvas/classify");
 
 function classify(text) {
@@ -55,4 +56,13 @@ function looksLikeCodeFragment(t) {
   return signals >= 2 || (signals >= 1 && indented >= 2);
 }
 
-module.exports = { classify };
+/**
+ * The finer category the canvas colours a clip by ("js", "sql", "prose",
+ * "image", ...), stored in clips.category. Runs the canvas's own detector on
+ * the stored row, never a copy of it.
+ */
+function categorize(clip) {
+  return detect({ type: clip.type, content: clip.content }).id;
+}
+
+module.exports = { classify, categorize, CLASSIFIER_VERSION };

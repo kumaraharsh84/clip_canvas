@@ -25,8 +25,9 @@
 const path = require("path");
 const fs = require("fs");
 const Database = require("better-sqlite3");
+const { categorize, CLASSIFIER_VERSION } = require("./classifyText");
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 const SEARCH_LIMIT_MAX = 200; // matches the clamp the old searchClips applied
 
 // Rebuilds a clip's search entry. Only on the columns the index reads: an
@@ -146,6 +147,10 @@ class ClipDatabase {
     addColumn("clips", "day", "INTEGER DEFAULT NULL");
     addColumn("clips", "weekday", "INTEGER DEFAULT NULL");
     addColumn("clips", "hour", "INTEGER DEFAULT NULL");
+    // v6: the canvas category ("js", "prose", ...), and the classifier version
+    // that produced it -- see backfillCategories().
+    addColumn("clips", "category", "TEXT DEFAULT NULL");
+    addColumn("clips", "category_v", "INTEGER NOT NULL DEFAULT 0");
 
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_boards_workspace ON boards(workspace_id, name);
@@ -164,6 +169,7 @@ class ClipDatabase {
     `);
 
     this.migrateFts();
+    this.backfillCategories();
 
     const have = db.prepare("SELECT version FROM schema_version WHERE version = ?");
     const mark = db.prepare("INSERT OR IGNORE INTO schema_version (version) VALUES (?)");
@@ -214,6 +220,29 @@ class ClipDatabase {
     `);
     db.exec(FTS_UPDATE_TRIGGER);
     db.exec("INSERT INTO clips_fts(clips_fts) VALUES('rebuild')");
+  }
+
+  /**
+   * Store the canvas category of every clip whose stored one is missing or
+   * came from an older classifier. Batched, so a large history is never held
+   * in memory at once. On a normal startup it finds nothing, for the cost of
+   * one table scan.
+   */
+  backfillCategories() {
+    const pick = this.db.prepare(
+      "SELECT id, type, content FROM clips WHERE category_v IS NOT ? ORDER BY id LIMIT 500"
+    );
+    const put = this.db.prepare("UPDATE clips SET category = ?, category_v = ? WHERE id = ?");
+    let updated = 0;
+    for (;;) {
+      const rows = pick.all(CLASSIFIER_VERSION);
+      if (!rows.length) break;
+      this.db.transaction(() => {
+        for (const r of rows) put.run(categorize(r), CLASSIFIER_VERSION, r.id);
+      })();
+      updated += rows.length;
+    }
+    return { updated };
   }
 
   seed() {
@@ -522,12 +551,14 @@ class ClipDatabase {
         type, content, title, file_size_bytes, source, tags,
         workspace_id, board_id, storage_mode, asset_path, asset_hash,
         thumbnail_path, original_path, mime_type,
-        created_at, updated_at, year, month, day, weekday, hour
+        created_at, updated_at, year, month, day, weekday, hour,
+        category, category_v
       ) VALUES (
         @type, @content, @title, @file_size_bytes, @source, @tags,
         @workspace_id, @board_id, @storage_mode, @asset_path, @asset_hash,
         @thumbnail_path, @original_path, @mime_type,
-        @created_at, @updated_at, @year, @month, @day, @weekday, @hour
+        @created_at, @updated_at, @year, @month, @day, @weekday, @hour,
+        @category, @category_v
       )
     `).run({
       type: clip.type,
@@ -548,6 +579,8 @@ class ClipDatabase {
       updated_at: now,
       year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(),
       weekday: d.getDay(), hour: d.getHours(),
+      category: categorize(clip),
+      category_v: CLASSIFIER_VERSION,
     });
 
     return this.getClipById(info.lastInsertRowid);

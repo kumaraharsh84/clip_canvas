@@ -96,13 +96,23 @@ for (const [id, label, ink, lang] of DEFS) {
 }
 
 // ── Classification ───────────────────────────────────────────────────────────
+// The database stores each clip's category (clips.category), so the calendar
+// can colour a day from counts alone, without loading its clips. Bump this
+// whenever detect() changes: on startup db.js recomputes every stored category
+// whose clips.category_v differs.
+const CLASSIFIER_VERSION = 1;
+
 const cache = new WeakMap();
 
-/** The category a clip belongs to. Cached per clip object. */
+/**
+ * The category a clip belongs to. Cached per clip object. A clip row that
+ * carries a stored category uses it -- db.js keeps it current -- so what the
+ * calendar counted and what the card shows cannot disagree.
+ */
 function categoryOf(clip) {
   let cat = cache.get(clip);
   if (!cat) {
-    cat = detect(clip);
+    cat = (clip.category && CATEGORIES[clip.category]) || detect(clip);
     cache.set(clip, cat);
   }
   return cat;
@@ -434,8 +444,8 @@ function hash01(v) {
 }
 
 module.exports = {
-  CATEGORIES, CATEGORY_LIST, TOKEN, BG,
-  categoryOf, blockOf, detectLanguage, scoreLanguage,
+  CATEGORIES, CATEGORY_LIST, TOKEN, BG, CLASSIFIER_VERSION,
+  categoryOf, detect, blockOf, detectLanguage, scoreLanguage,
   looksLikeTerminal, looksLikeProse, startsLikeSource, looksLikeSql, proseStats,
   mix, rgbCss, hexToRgb,
 };
