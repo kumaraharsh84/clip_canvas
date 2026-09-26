@@ -233,6 +233,30 @@ class Renderer2D {
       ctx.strokeRect(sx + 1, sy + 1, sw - 2, sh - 2);
     }
     this.drawDayLabel(n, sx, sy, sw, sh, open);
+    if (!hasClips && !n.future) this.drawEmptyNote(n, sx, sy, sw, sh);
+  }
+
+  /** Close up, an empty day says so -- today most of all, where copies land. */
+  drawEmptyNote(n, sx, sy, sw, sh) {
+    const today = this.todayKey === n.key;
+    const fontPx = Math.min(sw * (today ? 0.022 : 0.03), 18);
+    if (fontPx < 9) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = fontPx.toFixed(1) + "px " + FONT_SANS;
+    ctx.fillStyle = this.theme.labelDim;
+    const cx = sx + sw / 2;
+    const cy = sy + sh / 2;
+    if (today) {
+      ctx.fillText("Nothing copied yet today", cx, cy - fontPx * 0.8);
+      ctx.font = (fontPx * 0.8).toFixed(1) + "px " + FONT_SANS;
+      ctx.fillText("Copy anything and it lands here. Scroll out to see earlier days.", cx, cy + fontPx * 0.8);
+    } else {
+      ctx.fillText("Nothing copied", cx, cy);
+    }
+    ctx.restore();
   }
 
   /**
@@ -333,7 +357,7 @@ class Renderer2D {
     ctx.font = (fontPx * 0.8).toFixed(1) + "px " + FONT_SANS;
     const badge = n.count.toLocaleString() + (n.count === 1 ? " clip" : " clips");
     const badgeW = ctx.measureText(badge).width;
-    if (padPx + labelW + fontPx * 1.5 + badgeW < sw - padPx) {
+    if (n.count && padPx + labelW + fontPx * 1.5 + badgeW < sw - padPx) {
       ctx.fillStyle = this.theme.labelDim;
       ctx.fillText(badge, sx + sw - padPx - badgeW - 2, cy);
     }
