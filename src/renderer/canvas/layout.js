@@ -339,10 +339,10 @@ function chrome(n) {
  * ORDER-PRESERVING strip treemap.
  *
  * Fills horizontal strips left to right, top to bottom, closing a strip when
- * adding the next item would worsen its mean aspect ratio. Reading order is
- * exactly array order, which after rollUp() is chronological. Aspect ratios are
- * a little worse than squarify's, which matters little now that cards flow text
- * into multiple columns: a wide strip is a fine card shape.
+ * adding the next item would make its worst box a worse shape (stripAspect).
+ * Reading order is exactly array order, which after rollUp() is chronological.
+ * Aspect ratios are a little worse than squarify's, which matters little now
+ * that cards flow text into multiple columns: a wide strip is a fine card shape.
  */
 function stripLayout(nodes, rect, gap) {
   let total = 0;
