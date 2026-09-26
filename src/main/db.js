@@ -316,15 +316,20 @@ class ClipDatabase {
              hasMore: offset + rows.length < total };
   }
 
-  /** Every matching clip. Bounded by `max` so a runaway call cannot OOM. */
+  /**
+   * Matching clips, oldest first. Bounded by `max` so a runaway call cannot
+   * OOM -- and when it is hit, it is the NEWEST `max` that come back: this used
+   * to sort ascending before the LIMIT, so past the cap every new copy was the
+   * one left out.
+   */
   getClips(opts = {}) {
     const max = Math.min(Number(opts.max) || 20000, 100000);
     const { sql, params } = this.clipWhere(opts);
     return this.db.prepare(`
       SELECT c.* FROM clips c ${sql}
-      ORDER BY c.created_at ASC, c.id ASC
+      ORDER BY c.created_at DESC, c.id DESC
       LIMIT ?
-    `).all(...params, max).map(hydrate);
+    `).all(...params, max).reverse().map(hydrate);
   }
 
   /**
