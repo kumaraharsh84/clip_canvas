@@ -33,15 +33,19 @@
     "demo": "node demo/serve.js",
     "verify:app": "electron test/verify-app.js",
     "screenshots": "electron test/capture-demo.js",
-    "test:db": "electron test/verify-db.js"
+    "test:db": "electron test/verify-db.js",
+    "lint": "eslint ."
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
     "koffi": "^3.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "electron": "^29.4.6",
-    "electron-builder": "^24.9.1"
+    "electron-builder": "^24.9.1",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0"
   },
   "build": {
     "appId": "com.clipcanvas.app",

@@ -13,8 +13,14 @@ jobs:
         with:
           node-version: 22
 
-      # These load the canvas modules straight from src/, so they need no
-      # npm install -- and so no Electron download and no native rebuild.
+      # --ignore-scripts: no Electron download and no native rebuild. The
+      # checks below load plain JS from src/; nothing here needs Electron.
+      - name: Install dev tools
+        run: npm ci --ignore-scripts
+
+      - name: Lint
+        run: npm run lint
+
       - name: Classification regression suite
         run: node test/verify-classify.js
 

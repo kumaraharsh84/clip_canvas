@@ -1,7 +1,5 @@
 const { app, clipboard } = require("electron");
 const { execSync } = require("child_process");
-const fs = require("fs");
-const path = require("path");
 
 app.whenReady().then(() => {
   console.log("=== TESTING ROBUST FILE EXTRACTION ===");

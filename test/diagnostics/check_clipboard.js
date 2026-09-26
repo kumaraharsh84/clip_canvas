@@ -8,7 +8,6 @@ app.whenReady().then(() => {
   console.log("Text length:", text.length);
   
   // Try getClipboardFiles logic
-  let files = [];
   if (formats.includes("FileNameW")) {
      console.log("Has FileNameW");
   }
