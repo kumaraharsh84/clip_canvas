@@ -48,10 +48,13 @@ Or install it like any Windows app: `npm run build` writes
 `dist/ClipCanvas Setup <version>.exe`. What changed in each version is in
 [CHANGELOG.md](CHANGELOG.md).
 
-ClipCanvas starts in the system tray. Press `Ctrl+Shift+V`, or click the tray
+ClipCanvas starts in the system tray. Press `Win+Alt+V`, or click the tray
 icon, to open or hide the window. Closing the window hides it; quit from the
-tray menu. It starts with Windows from then on (untick *Start with Windows* in
-the tray menu to stop that).
+tray menu. It starts with Windows from then on. The shortcut, capture and
+start-up are all in **Settings** (the top bar, `Ctrl+,`, or the tray menu).
+
+If another program already owns `Win+Alt+V`, ClipCanvas falls back to
+`Ctrl+Alt+V`, then `Ctrl+Alt+Shift+V`, and Settings says which one it is using.
 
 To build the Windows installer:
 
@@ -72,6 +75,7 @@ npm run build   # dist/ClipCanvas Setup <version>.exe
 | T | today |
 | + / − · arrows | zoom · pan |
 | / | search — results appear as you type; ↑ ↓ and Enter, or click, fly to a clip |
+| Ctrl+, | Settings |
 | Esc | close search or details, then hide the window |
 
 - **Opens on today.** The current day is outlined in green. Scroll out for the
@@ -85,6 +89,9 @@ npm run build   # dist/ClipCanvas Setup <version>.exe
   Star, Pin, Archive and Delete. Delete moves a clip to Trash; in Trash,
   Restore brings it back and *Empty trash* deletes everything there for good,
   after telling you how many clips and how much space.
+- **Settings** — change the shortcut (click the keys, press a new
+  combination), pause capture, Start with Windows, see how much is stored,
+  and open the storage folder or the log. Changes save as you make them.
 - **Timeline strip** — the days on screen are lit; click a day to fly to it.
 - **Info panel** — where you are, what is under the cursor, and how many clips
   of each kind are in view.
@@ -144,22 +151,26 @@ committed bundle does not match its sources.
 ```text
 src/
   main/
-    main.js            window, tray, hotkey, start with Windows, IPC
+    main.js            windows, tray, global shortcut, start with Windows, IPC
+    hotkey.js          the shortcut's defaults and rules
     clipwatch.js       clipboard watcher: change detection, private copies skipped
-    settings.js        small settings file (pause, start with Windows)
+    log.js             the log file
+    settings.js        small settings file (shortcut, pause, start with Windows)
     db.js              SQLite data layer
     preload.js         allow-listed bridge to the renderer
     assetProtocol.js   clip-asset:// -- serves stored images
     classifyText.js    the type a captured clip is stored as
   renderer/
     index.html         UI shell
+    theme.css          colours and controls shared by both windows
     style.css
     renderer.js        top bar, info panel, details, search
+    settings.html      the Settings window (+ settings.css, settings.js)
     canvas/            the Time Canvas engine -- see its README
     timecanvas.bundle.js   built from canvas/
   assets/              app and tray icon
 demo/                  the canvas on its own, with synthetic clips
-test/               checks, benchmarks and diagnostics -- see its README
+test/                  checks, benchmarks and diagnostics -- see its README
 planning/              product decisions, roadmap and audits
 docs/                  screenshots
 ```
@@ -266,12 +277,15 @@ folder that has since moved does nothing and can be deleted.)
 
 ### The window does not appear
 
-ClipCanvas starts as a tray utility. Press `Ctrl+Shift+V`, or open it from the
-ClipCanvas icon in the Windows system tray.
+ClipCanvas starts as a tray utility. Press `Win+Alt+V` (or the shortcut shown
+in Settings), or open it from the ClipCanvas icon in the Windows system tray.
 
-### Hotkey conflict
+### The shortcut does nothing, or another app stopped reacting to it
 
-Change the `globalShortcut.register` call in `src/main/main.js`.
+Another program may own the same shortcut. Open Settings (tray menu →
+*Settings…*): it shows the shortcut ClipCanvas is actually using and why. Click
+the keys and press a different combination; ClipCanvas refuses Windows' basic
+shortcuts and warns about ones apps commonly use.
 
 ## Roadmap
 

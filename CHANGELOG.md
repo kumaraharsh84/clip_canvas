@@ -4,6 +4,30 @@ What changed in each version of ClipCanvas. Newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Settings window** — tray menu, the top bar or `Ctrl+,`: the shortcut,
+  capture, Start with Windows, how much is stored, the storage folder and log,
+  and the version. Changes save as you make them.
+- **Choose your own shortcut**: click the keys and press a combination. Windows'
+  basic shortcuts are refused; ones that apps commonly use are allowed with a
+  warning; one another program already owns keeps the old shortcut working.
+
+### Changed
+
+- **The default shortcut is now Win+Alt+V** instead of Ctrl+Shift+V, which took
+  "paste as plain text" away from Chrome, Edge and Word, "paste" from Windows
+  Terminal and Markdown preview from VS Code. If another program owns Win+Alt+V,
+  ClipCanvas uses Ctrl+Alt+V, then Ctrl+Alt+Shift+V, and Settings says so.
+- The window no longer shows Electron's default File / Edit / View menu bar.
+
+### Fixed
+
+- A shortcut that could not be registered failed silently; it is now logged and
+  shown in Settings.
+
 ## [2.1.0] — 2026-09-26
 
 ### Added
@@ -69,5 +93,6 @@ A rewrite, after the v1 source was lost; the first version pushed to GitHub.
 - Classification of prose, terminal sessions and code by language.
 - A demo page with synthetic clips, and a Windows installer.
 
+[Unreleased]: https://github.com/kumaraharsh84/clip_canvas/compare/v2.1.0...HEAD
 [2.1.0]: https://github.com/kumaraharsh84/clip_canvas/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/kumaraharsh84/clip_canvas/releases/tag/v2.0.0
