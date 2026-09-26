@@ -25,6 +25,8 @@ const crypto = require("crypto");
 
 const { ClipDatabase } = require("./db");
 const { registerAssetScheme, handleAssetProtocol } = require("./assetProtocol");
+// Stored type of a captured clip -- shares its rules with what the canvas shows.
+const { classify } = require("./classifyText");
 
 const IS_DEV = process.argv.includes("--dev");
 const POLL_MS = 700;
@@ -249,22 +251,6 @@ function captureImage(png, hash, size) {
 }
 
 /** text | code | url -- the same three the canvas colours by. */
-function classify(text) {
-  const t = text.trim();
-  if (/^https?:\/\/\S+$/i.test(t)) return "url";
-
-  const codey = [
-    /[{};]\s*$/m, /^\s*(function|class|const|let|var|import|export|def|public|private)\b/m,
-    /^\s*(if|for|while|switch|return)\s*\(/m, /=>/, /^\s*<\/?[a-z][\w-]*[\s>]/im,
-    /^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE)\s/im,
-  ].reduce((n, re) => n + (re.test(t) ? 1 : 0), 0);
-
-  const lines = t.split("\n");
-  const indented = lines.filter((l) => /^\s{2,}|\t/.test(l)).length;
-  if (codey >= 2 || (codey >= 1 && indented >= 2)) return "code";
-  return "text";
-}
-
 function broadcast(channel, payload) {
   for (const w of BrowserWindow.getAllWindows()) {
     if (!w.isDestroyed()) w.webContents.send(channel, payload);
