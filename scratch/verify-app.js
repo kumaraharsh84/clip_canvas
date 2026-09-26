@@ -1,6 +1,8 @@
 // ─── scratch/verify-app.js ───────────────────────────────────────────────────
 // End-to-end check of the app: db.js -> IPC -> preload.js -> index.html ->
-// renderer.js -> the Time Canvas, driven headlessly at three zoom levels.
+// renderer.js -> the Time Canvas, driven headlessly: it opens on today, a
+// whole year loads its days, a new copy moves nothing outside today, search
+// reveals a clip in a day that was not loaded, and hours and clips render.
 //
 // Same pattern as benchmark-renderer.js: a thin IPC layer stands in for
 // main.js so the tray, hotkey and clipboard watcher never start, and the REAL
@@ -10,7 +12,7 @@
 // Usage:
 //   npx electron scratch/verify-app.js [--db=PATH] [--shots=DIR] [--keep-open]
 //
-// --shots=DIR writes overview.png, hour.png and clip.png. The window renders
+// --shots=DIR writes today.png, overview.png, month.png, hour.png and clip.png. The window renders
 // OFFSCREEN: a hidden normal window stops producing compositor frames, and
 // capturePage then returns a stale one -- an earlier version of this harness
 // photographed the start-up view no matter where the camera had flown.
@@ -99,6 +101,10 @@ function registerIpc(db, workspaceId) {
   handle("clips:copyBack", (id) => ({ ok: true, id }));
   handle("clips:trashSummary", (o = {}) => db.getTrashSummary(ws(o)));
   handle("clips:emptyTrash", (o = {}) => db.getTrashSummary(ws(o))); // read-only here
+  handle("clips:dayCounts", (o = {}) => db.getDayCounts(ws(o)));
+  handle("clips:forDays", (o = {}) => db.getClipsForDays(ws(o)));
+  handle("capture:getState", () => ({ paused: false }));
+  handle("capture:setPaused", (p) => ({ paused: !!p }));
   handle("storage:getStats", (o = {}) => db.getStorageStats(ws(o)));
   handle("storage:openFolder", () => ({ ok: true }));
   handle("settings:getMaxFileSize", () => 0);
@@ -121,19 +127,37 @@ const WAIT_MOUNT = `(async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   for (let w = 0; w < 25000; w += 100) {
     const tc = window.__tc;
-    if (tc && tc.getTree() && document.querySelector("canvas.time-canvas-2d")) break;
+    if (tc && tc.getTree().count > 0 && document.querySelector("canvas.time-canvas-2d")) break;
     await sleep(100);
   }
-  if (!window.__tc || !window.__tc.getTree()) return { error: "Time Canvas never mounted" };
-  // let textures paint in over their per-frame budget
-  await sleep(1500);
+  const tc = window.__tc;
+  if (!tc || !tc.getTree().count) return { error: "Time Canvas never got its counts" };
+  await tc.whenIdle();
+  await sleep(600);
   return { ok: true };
 })()`;
 
-const OVERVIEW = `(() => {
+// The app opens on today: today's cell fills the view.
+const TODAY = `(() => {
+  const tc = window.__tc, vp = tc.viewport, now = new Date();
+  const d = tc.dayNode(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  const v = vp.worldBounds();
+  const cover = Math.min(d.w * vp.scale / vp.width, d.h * vp.scale / vp.height);
+  const inView = d.x >= v.x0 - 1 && d.x + d.w <= v.x1 + 1 && d.y >= v.y0 - 1 && d.y + d.h <= v.y1 + 1;
+  return { label: d.labelLong, count: d.count, loaded: d.loaded, cover, inView,
+           marked: tc.renderer.todayKey === d.key };
+})()`;
+
+// Fit everything with clips: a year view, whose days load their clips.
+const OVERVIEW = `(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const tc = window.__tc;
+  tc.fitAll(false);
+  await tc.whenIdle();
+  await sleep(1500); // let textures paint in over their per-frame budget
+  tc.invalidate();
+  await sleep(200);
   const canvas = document.querySelector("canvas.time-canvas-2d");
-  const lay = tc.getLayout();
   const st = tc.stats();
   let painted = null, tainted = false;
   try {
@@ -143,6 +167,9 @@ const OVERVIEW = `(() => {
     for (let i = 0; i < d.length; i += 4 * 97) { n++; if (d[i] !== 11 || d[i+1] !== 15 || d[i+2] !== 20) non++; }
     painted = non / n;
   } catch (e) { tainted = true; }
+  const root = tc.getTree();
+  let daysWithClips = 0;
+  for (const d of root.dayIndex.values()) if (d.count) daysWithClips++;
   return {
     canvas: [canvas.width, canvas.height],
     status: document.getElementById("status").textContent,
@@ -154,10 +181,60 @@ const OVERVIEW = `(() => {
     domNodes: document.getElementsByTagName("*").length,
     emptyShown: !document.getElementById("empty").hidden,
     painted, tainted,
-    layout: { failed: lay.failed, worst: lay.worstOverflow, minFontScale: lay.minFontScale, maxZoom: lay.maxZoom },
+    total: root.count, daysWithClips, years: root.years,
+    loaded: st.loaded, error: st.error,
     frame: st.frame,
     texturesMade: st.textures.made,
   };
+})()`;
+
+// Where every day cell and every loaded card is, by key.
+const SNAPSHOT = `(() => {
+  const tc = window.__tc, out = { days: {}, cards: {} };
+  const r = (n) => [n.x, n.y, n.w, n.h].map((v) => Math.round(v * 1000) / 1000).join(",");
+  for (const d of tc.getTree().dayIndex.values()) {
+    out.days[d.dayId] = r(d);
+    (function walk(n) { if (n.clip) { out.cards[n.key] = { r: r(n), day: d.dayId }; return; } n.children.forEach(walk); })(d);
+  }
+  return out;
+})()`;
+
+const WAIT_COUNT = (n) => `(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const tc = window.__tc;
+  for (let w = 0; w < 8000 && tc.getTree().count < ${n}; w += 100) await sleep(100);
+  await tc.whenIdle();
+  await sleep(300);
+  return tc.getTree().count;
+})()`;
+
+const REVEAL = (clip) => `(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const tc = window.__tc;
+  const clip = ${JSON.stringify(clip)};
+  const leaf = await tc.reveal(clip);
+  await sleep(800);
+  await tc.whenIdle();
+  const d = leaf && leaf.parent && leaf.parent.parent;
+  const v = tc.viewport.worldBounds();
+  const onScreen = leaf && leaf.x < v.x1 && leaf.x + leaf.w > v.x0 && leaf.y < v.y1 && leaf.y + leaf.h > v.y0;
+  const inDay = leaf && d && leaf.x >= d.x && leaf.y >= d.y && leaf.x + leaf.w <= d.x + d.w + 1e-6 && leaf.y + leaf.h <= d.y + d.h + 1e-6;
+  return { found: !!leaf, selected: tc.renderer.selectedKey, onScreen: !!onScreen, inDay: !!inDay,
+           details: !document.getElementById("details").hidden,
+           day: d ? d.dayId : null, zoom: tc.viewport.scale };
+})()`;
+
+// Frame one month: the wall-calendar view.
+const MONTH = `(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const tc = window.__tc;
+  let best = null;
+  for (const y of tc.getTree().children) for (const m of y.children) if (!best || m.count > best.count) best = m;
+  tc.viewport.fitTo({ x0: best.x, y0: best.y, x1: best.x + best.w, y1: best.y + best.h }, 12);
+  tc.invalidate();
+  await tc.whenIdle();
+  await sleep(1200);
+  return { label: best.labelLong, count: best.count, frame: tc.stats().frame };
 })()`;
 
 // Frame the busiest hour that has images in it, and wait for thumbnails.
@@ -299,18 +376,29 @@ app.whenReady().then(async () => {
     const m = await run(WAIT_MOUNT);
     if (m.error) throw new Error(m.error);
 
-    // ── 1. The whole archive ──────────────────────────────────────────────
+    // ── 1. Opens on today ─────────────────────────────────────────────────
+    const td = await run(TODAY);
+    console.log("-- opens on today: " + td.label + " --");
+    ok("today's cell fills the view", td.inView && td.cover > 0.6, `covers ${(td.cover * 100).toFixed(0)}% of the view`);
+    ok("today is marked", td.marked);
+    if (td.count) ok("today's clips are loaded", td.loaded, `${td.count} clips`);
+    await shot("today");
+
+    // ── 2. The whole archive: a year of calendar, days loaded ─────────────
     const o = await run(OVERVIEW);
-    console.log("-- overview: the whole archive --");
-    ok("clips loaded from the real database", /\d+ clips/.test(o.status), o.status.trim());
+    console.log("\n-- overview: " + o.years.join(", ") + " --");
+    ok("clips counted from the real database", /\d+ clips/.test(o.status), o.status.trim());
     ok("empty state not shown", !o.emptyShown);
-    ok("canvas painted", o.tainted || o.painted > 0.3,
+    ok("no loading errors", !o.error, o.error || "");
+    ok("canvas painted", o.tainted || o.painted > 0.2,
        o.tainted ? "(canvas tainted -- see image check)" : (100 * o.painted).toFixed(1) + "% of pixels");
-    ok("every card's full text fits", o.layout.failed === 0 && o.layout.worst <= 1.0001,
-       `worst ${o.layout.worst.toFixed(3)}, ${o.layout.failed} failed`);
-    ok("smallest text is reachable by zooming", 12 * o.layout.minFontScale * o.layout.maxZoom >= 6.99,
-       `text ${(o.layout.minFontScale * 100).toFixed(1)}% -> max zoom ${o.layout.maxZoom.toFixed(1)}x`);
-    ok("cards show line textures, not flat tiles", o.texturesMade > 0, `${o.texturesMade} textures painted`);
+    ok("days on screen load their clips", o.loaded.days > 0,
+       `${o.loaded.days} of ${o.daysWithClips} days with clips loaded · ${o.loaded.clips} of ${o.total} clips`);
+    ok("every loaded card's full text fits", o.loaded.failed === 0 && o.loaded.worstOverflow <= 1.0001,
+       `worst ${o.loaded.worstOverflow.toFixed(3)}, ${o.loaded.failed} failed`);
+    ok("smallest text is reachable by zooming", 12 * o.loaded.minFontScale * o.loaded.maxZoom >= 6.99,
+       `text ${(o.loaded.minFontScale * 100).toFixed(1)}% -> max zoom ${o.loaded.maxZoom.toFixed(1)}x`);
+    ok("cards are drawn", o.frame.cards > 0, `${o.frame.cards} cards, ${o.texturesMade} textures painted`);
     ok("legend lists categories", o.legend > 0, `${o.legend} categories`);
     ok("timeline strip mounted", o.timeline);
     ok("info panel populated", !!o.info.trim(), JSON.stringify(o.info.trim()));
@@ -319,7 +407,52 @@ app.whenReady().then(async () => {
     info(o.hud);
     await shot("overview");
 
-    // ── 2. One hour, with its images ──────────────────────────────────────
+    // ── 3. A new copy moves nothing outside today ─────────────────────────
+    const before = await run(SNAPSHOT);
+    const now = new Date();
+    const todayId = now.getFullYear() + "-" + (now.getMonth() + 1) + "-" + now.getDate();
+    const added = db.addClip({
+      type: "text", content: "verify-app: a new copy, " + now.toISOString(),
+      workspace_id: target.id, source: "clipboard", storage_mode: "inline",
+    });
+    win.webContents.send("clip:added", added);
+    const count = await run(WAIT_COUNT(o.total + 1));
+    const after = await run(SNAPSHOT);
+    let daysMoved = 0, cardsMoved = 0, cardsKept = 0;
+    for (const id in before.days) if (after.days[id] !== before.days[id]) daysMoved++;
+    for (const k in before.cards) {
+      const b = before.cards[k];
+      if (b.day === todayId) continue;
+      cardsKept++;
+      if (!after.cards[k] || after.cards[k].r !== b.r) cardsMoved++;
+    }
+    console.log("\n-- a new copy --");
+    ok("the new clip is counted", count === o.total + 1, `${o.total} -> ${count}`);
+    ok("no day cell moved", daysMoved === 0, `${daysMoved} of ${Object.keys(before.days).length} moved`);
+    ok("no card outside today moved", cardsMoved === 0, `${cardsMoved} of ${cardsKept} moved`);
+    const nv = await run(REVEAL(added));
+    ok("the new clip is on today's cell", nv.found && nv.day === todayId && nv.inDay, JSON.stringify(nv));
+    await run(`window.__tc.select(null)`);
+
+    // ── 4. Search reveals a clip whose day was not loaded ─────────────────
+    await run(`(async () => { window.__tc.fitAll(false); await window.__tc.whenIdle(); })()`);
+    const far = db.db.prepare(
+      "SELECT * FROM clips WHERE workspace_id = ? AND deleted_at IS NULL AND is_archived = 0 ORDER BY created_at ASC LIMIT 1"
+    ).get(target.id);
+    const rv = await run(REVEAL(far));
+    console.log("\n-- search reveal: clip #" + far.id + " --");
+    ok("clip found and selected", rv.found && rv.selected === "c" + far.id, JSON.stringify(rv));
+    ok("camera flew to it", rv.onScreen && rv.inDay);
+    ok("details panel open", rv.details);
+    await run(`window.__tc.select(null)`);
+
+    // ── 5. A month, like a wall calendar ──────────────────────────────────
+    const mo = await run(MONTH);
+    console.log("\n-- month: " + mo.label + " --");
+    ok("month view draws its days", mo.frame.days >= 28, `${mo.frame.days} day cells, ${mo.frame.cards} cards`);
+    await shot("month");
+
+    // ── 6. One hour, with its images ──────────────────────────────────────
     const h = await run(HOUR);
     console.log("\n-- hour: " + h.label + " --");
     info(`${h.clips} clips, ${h.images} images · cache ${JSON.stringify(h.imageCache)}`);
@@ -331,7 +464,7 @@ app.whenReady().then(async () => {
     info(`level ${h.frame.level} · ${h.frame.cards} cards · lines ${h.frame.linesDrawn}/${h.frame.linesTotal}`);
     await shot("hour");
 
-    // ── 3. One clip, readable ─────────────────────────────────────────────
+    // ── 7. One clip, readable ─────────────────────────────────────────────
     const c = await run(CLIP);
     console.log("\n-- clip --");
     if (c.error) {

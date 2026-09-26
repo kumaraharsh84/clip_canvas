@@ -3,12 +3,16 @@
 //
 // This process has no require and no filesystem (contextIsolation is on), so
 // everything goes through window.api from preload.js, and the canvas engine
-// arrives as timecanvas.bundle.js -- rebuild it with
-//   node src/renderer/canvas/build.js src/renderer/timecanvas.bundle.js
-// after editing anything under src/renderer/canvas/.
+// arrives as timecanvas.bundle.js -- rebuild it with `npm run bundle` after
+// editing anything under src/renderer/canvas/.
 //
-// Navigation keys (F, +/-, arrows, Backspace) belong to the canvas controls.
-// This file only handles app-level keys: "/" to search and Escape to close.
+// The canvas asks for data itself, through the source built in makeSource():
+// clip counts per day for the whole history, and full clips only for the days
+// on screen. Every change here (a capture, an edit, a filter) therefore comes
+// down to tc.refresh() or tc.setSource() -- never "reload everything".
+//
+// Navigation keys (F, T, +/-, arrows, Backspace) belong to the canvas
+// controls. This file handles app-level keys: "/" to search, Escape to close.
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function () {
@@ -32,11 +36,9 @@
   };
 
   let tc = null;
-  let strip = null;
   let selected = null;
   let selectedNode = null;
-  let clips = [];
-  let reloadTimer = null;
+  let refreshTimer = null;
   let infoRaf = null;
   let hovered = null;
 
@@ -54,15 +56,18 @@
           ? "clip-asset://" + String(clip.asset_path).replace(/\\/g, "/")
           : clip.content,
     });
-    strip = mountTimelineStrip(el.timeline, tc);
+    mountTimelineStrip(el.timeline, tc);
+    tc.onData(onData);
 
     // Handle for the headless harnesses in scratch/ to drive the camera and
     // read layout state. Deliberately the only global this file creates.
     window.__tc = tc;
 
-    await loadWorkspaces();
-    await reload();
     wireEvents();
+    await loadWorkspaces();
+    // The app opens on today: the current day is the working place, and the
+    // rest of history is one zoom-out away (planning/chat-decisions.md).
+    await tc.setSource(makeSource(), { view: "today" });
   }
 
   // ── Data ───────────────────────────────────────────────────────────────────
@@ -72,7 +77,8 @@
       .map((w) => `<option value="${w.id}">${esc(w.name)} (${w.clip_count})</option>`)
       .join("");
 
-    const active = ws.find((w) => w.clip_count > 0) || ws[0];
+    const active = ws.find((w) => w.is_default && w.clip_count > 0) ||
+                   ws.find((w) => w.clip_count > 0) || ws[0];
     if (active) {
       el.workspace.value = String(active.id);
       await api.workspaces.setActive(active.id);
@@ -86,51 +92,63 @@
       boards.map((b) => `<option value="${b.id}">${esc(b.name)} (${b.clip_count})</option>`).join("");
   }
 
-  async function reload({ keepView = false } = {}) {
-    status("loading…");
-    const t0 = performance.now();
-
-    // Full rows, not summaries: every card holds its ENTIRE text, so the layout
-    // needs the whole body to count lines. getClipSummaries cuts content at 4 KB.
-    clips = await api.invoke("clips:getAll", {
+  /** What the canvas loads through: the current workspace, board and filter. */
+  function makeSource() {
+    const opts = {
       workspaceId: Number(el.workspace.value) || undefined,
       boardId: Number(el.board.value) || undefined,
       filter: el.filter.value,
-      max: 20000,
-    });
-
-    const fetchMs = performance.now() - t0;
-    const t1 = performance.now();
-    tc.setClips(clips, { keepView });
-    const layoutMs = performance.now() - t1;
-
-    el.empty.hidden = clips.length > 0;
-    if (!clips.length) {
-      el.empty.innerHTML =
-        "<b>No clips here yet</b><div>Copy something — it lands on the timeline automatically.</div>";
-    }
-
-    renderLegend();
-    scheduleInfo();
-    status(`${clips.length.toLocaleString()} clips · fetch ${fetchMs | 0}ms · layout ${layoutMs | 0}ms`);
+    };
+    return {
+      dayCounts: () => api.clips.dayCounts(opts),
+      forDays: (days) => api.clips.forDays({ ...opts, days }),
+    };
   }
 
-  /** Coalesce bursts: pasting a run of clips must not relayout once per clip. */
-  function scheduleReload() {
-    clearTimeout(reloadTimer);
-    reloadTimer = setTimeout(() => reload({ keepView: true }), 400);
+  /** Filters, workspace or board changed: same place in time, different clips. */
+  async function resource() {
+    deselect();
+    status("loading…");
+    await tc.setSource(makeSource(), { view: "keep" });
+  }
+
+  /** Coalesce bursts: a run of copies must not refetch once per clip. */
+  function refreshSoon() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => tc.refresh(), 250);
+  }
+
+  function onData(root) {
+    renderLegend(root);
+    scheduleInfo();
+    const days = countDays(root);
+    status(`${root.count.toLocaleString()} ${root.count === 1 ? "clip" : "clips"} · ${days} ${days === 1 ? "day" : "days"}`);
+
+    el.empty.hidden = root.count > 0;
+    if (!root.count) {
+      el.empty.innerHTML = el.filter.value === "trash"
+        ? "<b>Trash is empty</b>"
+        : el.filter.value === "active"
+          ? "<b>No clips here yet</b><div>Copy something — it lands on today automatically.</div>"
+          : "<b>Nothing matches this filter</b>";
+    }
+  }
+
+  function countDays(root) {
+    let n = 0;
+    for (const d of root.dayIndex.values()) if (d.count) n++;
+    return n;
   }
 
   // ── Info panel ─────────────────────────────────────────────────────────────
   // Like the reference's side panel: where you are, and what is under the
-  // cursor. Falls back to the selection, then to the whole archive.
+  // cursor. Falls back to the selection, then to wherever the camera is.
   function scheduleInfo() {
     if (infoRaf != null) return;
     infoRaf = requestAnimationFrame(() => { infoRaf = null; renderInfo(); });
   }
 
   function renderInfo() {
-    // Under the cursor first, then the selection, then wherever the camera is.
     const node = hovered || selectedNode || tc.framed() || tc.getTree();
     const d = node ? tc.describe(node) : null;
     if (!d) { el.infoPath.textContent = ""; el.infoTitle.textContent = ""; return; }
@@ -157,29 +175,29 @@
       el.infoCats.innerHTML = "";
     } else {
       el.infoTitle.textContent = d.title || "All clips";
-      el.infoMeta.textContent =
-        `${d.count.toLocaleString()} ${d.count === 1 ? "clip" : "clips"}` + (d.span ? `\n${d.span}` : "");
+      el.infoMeta.textContent = d.count
+        ? `${d.count.toLocaleString()} ${d.count === 1 ? "clip" : "clips"}` + (d.span ? `\n${d.span}` : "")
+        : "nothing copied";
       el.infoCats.replaceChildren(...d.categories.slice(0, 6).map((c) =>
         h("div", "row", swatch(c.color), c.label, h("span", "n", String(c.count)))));
     }
   }
 
-  function renderLegend() {
-    const root = tc.getTree();
+  function renderLegend(root) {
     const cats = root && root.cats ? root.cats : {};
     const byId = tc.categoryById;
     el.legend.replaceChildren(...Object.entries(cats)
+      .filter(([id]) => byId[id])
       .sort((a, b) => b[1] - a[1])
       .map(([id, n]) => h("span", "chip", swatch(byId[id].ink), byId[id].label + " ", h("span", "n", String(n)))));
-
-    el.legend.hidden = !Object.keys(cats).length;
+    el.legend.hidden = !el.legend.children.length;
   }
 
   function onFrame(s) {
     if (!hovered && !selectedNode) scheduleInfo(); // the camera moved
     el.hud.textContent =
       `draw ${s.ms.toFixed(1)} ms · ${s.level} ${s.zoomLabel} · ${s.cards} cards · ` +
-      `${s.textures} textures · lines ${s.linesDrawn}/${s.linesTotal}`;
+      `${s.loadedDays} days loaded (${s.loadedClips} clips) · ${s.textures} textures`;
   }
 
   // ── Selection / details ────────────────────────────────────────────────────
@@ -210,8 +228,7 @@
       const img = document.createElement("img");
       img.alt = "clip " + clip.id;
       img.src = "clip-asset://" + String(clip.asset_path).replace(/\\/g, "/");
-      el.dBody.innerHTML = "";
-      el.dBody.appendChild(img);
+      el.dBody.replaceChildren(img);
     } else {
       let text = clip.content || "";
       if (clip.content_length && text.length < clip.content_length) {
@@ -220,8 +237,7 @@
       }
       const pre = document.createElement("pre");
       pre.textContent = text;
-      el.dBody.innerHTML = "";
-      el.dBody.appendChild(pre);
+      el.dBody.replaceChildren(pre);
     }
   }
 
@@ -230,7 +246,11 @@
     const updated = await api.clips.update(selected.id, patch);
     Object.assign(selected, updated);
     onSelect(selected, selectedNode);
-    scheduleReload();
+    refreshSoon();
+  }
+
+  function deselect() {
+    tc.select(null);
   }
 
   // ── Search ─────────────────────────────────────────────────────────────────
@@ -242,7 +262,7 @@
       query: q,
       workspaceId: Number(el.workspace.value) || undefined,
       boardId: Number(el.board.value) || undefined,
-      includeArchived: el.filter.value === "all" || el.filter.value === "archived",
+      includeArchived: true,
     });
 
     el.results.hidden = false;
@@ -251,41 +271,43 @@
       return;
     }
 
-    el.results.innerHTML = hits.map((c) => `
-      <button class="result" data-id="${c.id}">
+    el.results.innerHTML = hits.map((c, i) => `
+      <button class="result" data-i="${i}">
         <div class="r-head">
           <span class="pill">${esc(c.type)}</span>
+          ${c.is_archived ? '<span class="pill">archived</span>' : ""}
           <span class="r-when">${whenText(c.created_at)}</span>
         </div>
         <div class="r-body">${esc(oneLine(c))}</div>
       </button>`).join("");
 
-    for (const btn of el.results.querySelectorAll(".result[data-id]")) {
-      btn.addEventListener("click", () => {
-        const id = Number(btn.dataset.id);
-        const node = findNode(id);
-        if (node) {
-          tc.flyTo(node);
-          tc.renderer.selectedKey = node.key;
-          tc.invalidate();
-          onSelect(node.clip, node);
-        }
-        el.results.hidden = true;
-      });
+    for (const btn of el.results.querySelectorAll(".result[data-i]")) {
+      btn.addEventListener("click", () => openHit(hits[Number(btn.dataset.i)]));
     }
   }
 
-  /** Locate a clip's node so search can fly the camera to it. */
-  function findNode(id) {
-    const tree = tc.getTree();
-    if (!tree) return null;
-    let found = null;
-    (function walk(n) {
-      if (found) return;
-      if (n.clip) { if (n.clip.id === id) found = n; return; }
-      n.children.forEach(walk);
-    })(tree);
-    return found;
+  /**
+   * Fly to a search hit. Its day may not be loaded -- reveal() loads it -- and
+   * the current filter may hide it, in which case the filter widens to All.
+   */
+  async function openHit(hit) {
+    el.results.hidden = true;
+    if (!matchesFilter(hit, el.filter.value)) {
+      el.filter.value = "all";
+      await resource();
+    }
+    await tc.reveal(hit);
+  }
+
+  function matchesFilter(c, f) {
+    switch (f) {
+      case "trash": return !!c.deleted_at;
+      case "starred": return !c.deleted_at && !!c.is_starred;
+      case "pinned": return !c.deleted_at && !!c.is_pinned;
+      case "archived": return !c.deleted_at && !!c.is_archived;
+      case "all": return !c.deleted_at;
+      default: return !c.deleted_at && !c.is_archived;
+    }
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────
@@ -293,11 +315,11 @@
     el.workspace.addEventListener("change", async () => {
       await api.workspaces.setActive(Number(el.workspace.value));
       await loadBoards();
-      await reload();
+      await resource();
     });
-    el.board.addEventListener("change", () => reload());
-    el.filter.addEventListener("change", () => reload());
-    el.reload.addEventListener("click", () => reload({ keepView: true }));
+    el.board.addEventListener("change", resource);
+    el.filter.addEventListener("change", resource);
+    el.reload.addEventListener("click", resource);
     el.fit.addEventListener("click", () => tc.fitAll(true));
 
     el.search.addEventListener("keydown", (e) => {
@@ -308,7 +330,7 @@
       if (!el.search.value.trim()) el.results.hidden = true;
     });
 
-    el.dClose.addEventListener("click", () => deselect());
+    el.dClose.addEventListener("click", deselect);
     el.dTitle.addEventListener("change", () => patchSelected({ title: el.dTitle.value }));
     el.dStar.addEventListener("click", () => patchSelected({ is_starred: selected.is_starred ? 0 : 1 }));
     el.dPin.addEventListener("click", () => patchSelected({ is_pinned: selected.is_pinned ? 0 : 1 }));
@@ -324,14 +346,14 @@
       if (!selected) return;
       await api.clips.remove([selected.id]);
       deselect();
-      reload({ keepView: true });
+      refreshSoon();
     });
 
-    // A new capture appears without being asked for, where it belongs in time.
-    api.on("clip:added", scheduleReload);
+    // A new capture lands on today. Only today's cell is refetched.
+    api.on("clip:added", refreshSoon);
 
-    // The controls hint sits over the canvas's top-left labels; show it for
-    // the first moments only, and get out of the way on first interaction.
+    // The controls hint sits over the canvas's top-left; show it for the first
+    // moments only, and get out of the way on first interaction.
     const hint = $("hint");
     const dismiss = () => hint.classList.add("gone");
     setTimeout(dismiss, 7000);
@@ -346,14 +368,8 @@
         if (!typing) api.window.hide();
         return;
       }
-      if (!typing && e.key === "/") { e.preventDefault(); el.search.focus(); }
+      if (!typing && e.key === "/") { e.preventDefault(); el.search.focus(); el.search.select(); }
     });
-  }
-
-  function deselect() {
-    tc.renderer.selectedKey = null;
-    tc.invalidate();
-    onSelect(null, null);
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -362,7 +378,7 @@
     const n = Number(ts) || 0;
     const d = new Date(n < 1e12 ? n * 1000 : n);
     return d.toLocaleString(undefined, {
-      day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
+      day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit",
     });
   }
 
