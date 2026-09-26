@@ -33,7 +33,18 @@ class Viewport {
     this.maxScale = MAX_SCALE;
   }
 
+  /**
+   * Keeps the world point at the centre of the view where it is. Keeping the
+   * top-left corner instead slid whatever you were looking at off one edge
+   * whenever the top bar wrapped to a second line and the canvas got shorter.
+   */
   resize(width, height) {
+    if (this.width > 0 && this.height > 0) {
+      const cx = this.x + this.width / (2 * this.scale);
+      const cy = this.y + this.height / (2 * this.scale);
+      this.x = cx - width / (2 * this.scale);
+      this.y = cy - height / (2 * this.scale);
+    }
     this.width = width;
     this.height = height;
   }

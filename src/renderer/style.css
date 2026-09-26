@@ -70,6 +70,8 @@ select, input, button {
 }
 
 select, button { cursor: pointer; }
+/* A long workspace or board name must not push the top bar onto two lines. */
+#topbar select { max-width: 190px; text-overflow: ellipsis; }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: .45; cursor: default; }
 button.danger:hover { border-color: var(--danger); color: var(--danger); }
