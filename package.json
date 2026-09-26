@@ -8,7 +8,12 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "build": "electron-builder",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "test": "node scratch/verify-classify.js && node scratch/verify-timecanvas-2d.js",
+    "bundle": "node src/renderer/canvas/build.js src/renderer/timecanvas.bundle.js && node src/renderer/canvas/build.js demo/timecanvas.bundle.js",
+    "demo": "node demo/serve.js",
+    "verify:app": "electron scratch/verify-app.js",
+    "screenshots": "electron scratch/capture-demo.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
