@@ -6,8 +6,9 @@
 //   %APPDATA%/clipcanvas/clipcanvas.db
 // after the original source was lost. The schema below is not a guess: it was
 // read back out of that file, which already carries 5 applied migrations and
-// 649 live clips. The method names and argument shapes are the ones the
-// harnesses in scratch/ call, so those still run unchanged.
+// 649 live clips. The method names are the ones the renderer harnesses in
+// scratch/ call; those harnesses were written for the v1 module, though, and
+// need updating before they run against this class (see scratch/README.md).
 //
 // TWO THINGS THAT BITE IF YOU FORGET THEM
 //
