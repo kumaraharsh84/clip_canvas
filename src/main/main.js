@@ -11,6 +11,9 @@
 // The clipboard watcher (clipwatch.js) polls Windows' clipboard sequence
 // number and reads the clipboard only when it changes, and skips copies that
 // password managers mark as private. Capture can be paused from the tray.
+//
+// Errors go to a log file (log.js) -- the app runs with no console -- which
+// the tray menu opens.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const {
@@ -27,6 +30,7 @@ const { registerAssetScheme, handleAssetProtocol } = require("./assetProtocol");
 const { classify } = require("./classifyText");
 const { ClipboardWatcher } = require("./clipwatch");
 const { Settings } = require("./settings");
+const log = require("./log");
 
 const IS_DEV = process.argv.includes("--dev");
 const POLL_MS = 700;
@@ -44,6 +48,13 @@ let activeWorkspaceId = null;
 // code rather than a copy of it.
 registerAssetScheme(protocol);
 
+// A tray utility has no one watching its console. Log what would otherwise
+// vanish, and keep running: one bad clipboard read must not end capture.
+process.on("uncaughtException", (err) => log.error("uncaught exception:", err));
+process.on("unhandledRejection", (reason) => log.error("unhandled rejection:", reason));
+app.on("render-process-gone", (_e, _wc, d) => log.error("window process gone:", d.reason, "exit code", d.exitCode));
+app.on("child-process-gone", (_e, d) => log.error(d.type, "process gone:", d.reason, "exit code", d.exitCode));
+
 // ── Startup ──────────────────────────────────────────────────────────────────
 // A clipboard manager must not run twice: two watchers would both capture every
 // copy and the history would double up.
@@ -52,13 +63,15 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on("second-instance", () => showPanel());
   app.whenReady().then(start).catch((err) => {
-    console.error("[clipcanvas] startup failed:", err);
+    log.error("startup failed:", err);
     app.exit(1);
   });
 }
 
 function start() {
   const userData = app.getPath("userData");
+  log.init(path.join(userData, "logs"));
+  log.info(`ClipCanvas ${app.getVersion()} starting | Electron ${process.versions.electron} | ${process.platform}`);
   storageDir = path.join(userData, "storage");
   db = new ClipDatabase(path.join(userData, "clipcanvas.db"), storageDir);
   settings = new Settings(path.join(userData, "settings.json"), { capturePaused: false });
@@ -90,6 +103,7 @@ app.on("window-all-closed", (e) => {
 });
 
 app.on("will-quit", () => {
+  log.info("quitting");
   globalShortcut.unregisterAll();
   if (watcher) watcher.stop();
   if (db) db.close();
@@ -126,6 +140,14 @@ function createWindow() {
     if (!app.isQuitting) { e.preventDefault(); win.hide(); }
   });
 
+  // Renderer errors reach the log too. (Electron 35+ puts level and message on
+  // the event; older versions passed them as arguments.)
+  win.webContents.on("console-message", (e, ...old) => {
+    const level = e.level !== undefined ? e.level : old[0];
+    const message = e.message !== undefined ? e.message : old[1];
+    if (level === 3 || level === "error") log.error("window:", message);
+  });
+
   if (IS_DEV) win.webContents.openDevTools({ mode: "detach" });
 }
 
@@ -147,6 +169,7 @@ function updateTray() {
       click: (item) => { settings.set("autoStart", item.checked); applyAutoStart(item.checked); } },
     { type: "separator" },
     { label: "Open storage folder", click: () => shell.openPath(storageDir) },
+    { label: "Open log file", enabled: !!log.file, click: () => shell.openPath(log.file) },
     { type: "separator" },
     { label: "Quit", click: () => { app.isQuitting = true; app.quit(); } },
   ]));
@@ -171,7 +194,7 @@ function applyAutoStart(enabled) {
     const args = app.isPackaged ? [] : [quote(app.getAppPath().replace(/\\/g, "/"))];
     app.setLoginItemSettings({ openAtLogin: enabled, path: quote(process.execPath), args, name: "ClipCanvas" });
   } catch (err) {
-    console.error("[clipcanvas] could not update start-with-Windows:", err.message);
+    log.error("could not update start-with-Windows:", err.message);
   }
 }
 
@@ -282,7 +305,7 @@ function registerIpc() {
       try {
         return { success: true, data: await fn(...args) };
       } catch (err) {
-        console.error(`[clipcanvas] IPC "${channel}":`, err);
+        log.error(`IPC "${channel}":`, err);
         return { success: false, error: err.message || String(err) };
       }
     });

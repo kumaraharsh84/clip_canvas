@@ -9,6 +9,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const log = require("./log");
 
 class Settings {
   constructor(file, defaults = {}) {
@@ -31,7 +32,7 @@ class Settings {
       fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2));
       fs.renameSync(tmp, this.file);
     } catch (err) {
-      console.error("[clipcanvas] could not save settings:", err.message);
+      log.error("could not save settings:", err.message);
     }
     return value;
   }
