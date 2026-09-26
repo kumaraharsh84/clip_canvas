@@ -3,11 +3,16 @@
 **Your whole clipboard history, on one zoomable timeline.**
 
 ClipCanvas keeps everything you copy on Windows — text, code, links and images —
-and lays it out as one canvas. Years hold months, months hold days, days hold
-hours, and each hour holds the clips you copied in it, in the order you copied
-them. You don't open folders; you zoom in.
+and lays it out on one canvas shaped like a wall calendar. Every day has its own
+cell, and it never moves: zoom into a day and it holds its hours, and each hour
+holds the clips you copied in it, in the order you copied them. You don't open
+folders; you zoom in.
 
-![Two and a half months of clips, coloured by kind](docs/overview.png)
+![A year of clips: every day is a cell, filled with what was copied that day](docs/overview.png)
+
+- **Everything stays where it is.** A day's place comes from its date alone,
+  like a drawing in AutoCAD. Copying something new changes today and nothing
+  else; June is always where June was.
 
 - **In the order you copied.** An image copied between two text clips sits
   between them. Nothing is filed away by type.
@@ -23,9 +28,11 @@ them. You don't open folders; you zoom in.
 
 ![One hour: every card is the complete clip, with the time it was copied](docs/hour.png)
 
-| A day | One clip, up close |
+| A month | A day |
 | --- | --- |
-| ![A day of clips, grouped by hour](docs/day.png) | ![A single HTML clip, syntax-coloured](docs/clip.png) |
+| ![A month, as a wall calendar](docs/month.png) | ![A day of clips, grouped by hour](docs/day.png) |
+
+![One clip, up close: syntax-coloured, complete](docs/clip.png)
 
 <sub>Screenshots are from the demo page (`npm run demo`), which generates
 synthetic clips.</sub>
@@ -39,7 +46,8 @@ npm start
 
 ClipCanvas starts in the system tray. Press `Ctrl+Shift+V`, or click the tray
 icon, to open or hide the window. Closing the window hides it; quit from the
-tray menu.
+tray menu. It starts with Windows from then on (untick *Start with Windows* in
+the tray menu to stop that).
 
 To build the Windows installer:
 
@@ -57,34 +65,50 @@ npm run build   # dist/ClipCanvas Setup <version>.exe
 | double-click | fly into the box under the cursor |
 | right-click / Backspace | fly back out one level |
 | F / Home | fit everything |
+| T | today |
 | + / − · arrows | zoom · pan |
-| / | search — Enter runs it, and clicking a result flies to that clip |
+| / | search — results appear as you type; ↑ ↓ and Enter, or click, fly to a clip |
 | Esc | close search or details, then hide the window |
 
+- **Opens on today.** The current day is outlined in green. Scroll out for the
+  month, the year, and every year you have.
 - **Top bar** — choose the workspace and board, and show Active, Starred,
-  Pinned, Archived, Trash or All clips. New clips are saved to the active
-  workspace; Personal, Research and College are created on first run.
+  Pinned, Archived, Trash or All clips. *Capturing* shows whether copies are
+  being saved; click it to pause. *Today* and *Fit* move the camera. New clips
+  are saved to the active workspace; Personal, Research and College are
+  created on first run.
 - **Details** — the full text or image, an editable title, and Copy back,
-  Star, Pin, Archive and Delete. Delete moves a clip to Trash.
+  Star, Pin, Archive and Delete. Delete moves a clip to Trash; in Trash,
+  Restore brings it back and *Empty trash* deletes everything there for good,
+  after telling you how many clips and how much space.
 - **Timeline strip** — the days on screen are lit; click a day to fly to it.
 - **Info panel** — where you are, what is under the cursor, and how many clips
   of each kind are in view.
 
 ## How it works
 
-- **Capture.** The main process polls the clipboard every 700 ms. Images are
-  checked first and saved as PNG under `storage/images/YYYY/MM/`; text is
-  classified as a link, code or prose and stored in SQLite. Whatever is already
-  on the clipboard when the app starts is not captured.
+- **Capture.** The main process asks Windows every 700 ms whether the
+  clipboard has changed (`GetClipboardSequenceNumber`, through
+  [koffi](https://koffi.dev)) — about a microsecond — and reads the clipboard
+  only when it has. Images are checked first and saved as PNG under
+  `storage/images/YYYY/MM/`; text is classified as a link, code or prose and
+  stored in SQLite. Whatever is already on the clipboard when the app starts is
+  not captured, and neither is anything a password manager marks as private.
+  Capture can be paused from the tray or the top bar.
 - **Storage.** [better-sqlite3](https://github.com/WiseLibs/better-sqlite3),
   with additive migrations and an FTS5 search index kept in step by triggers.
   Images reach the window through a `clip-asset://` protocol that resolves
   nothing outside the storage folder.
 - **Canvas.** A canvas-2D engine in [`src/renderer/canvas`](src/renderer/canvas/README.md):
-  an order-preserving strip treemap for the time boxes, per-card font fitting
-  so that every card holds its whole text, and four levels of detail, from
-  solid tiles to syntax-coloured glyphs. Laying out 20,000 clips takes about
-  half a second.
+  a fixed calendar for years, months and days; inside each day an
+  order-preserving strip treemap of hours and clips, with per-card font fitting
+  so that every card holds its whole text; and four levels of detail, from
+  solid tiles to syntax-coloured glyphs.
+- **Loading like a map.** Zoomed out, the canvas needs only how many clips of
+  each kind every day has — one small query. A day's clips are fetched when its
+  cell is big enough on screen to show them, and dropped again when it is far
+  away, so the history can grow without the window slowing down. A new copy
+  re-reads the counts and reloads today only.
 - **Isolation.** The window runs with context isolation and a strict
   Content-Security-Policy. The preload script exposes an allow-list of IPC
   channels, never `ipcRenderer` itself.
@@ -99,7 +123,8 @@ source tree, where every file is a box and every box is readable up close.
 | `npm start` | run the app |
 | `npm run dev` | run it with DevTools, and show the window at launch |
 | `npm run build` | build the Windows installer into `dist/` |
-| `npm test` | classification and layout checks, on plain Node |
+| `npm test` | classification, calendar and layout checks, on plain Node |
+| `npm run test:db` | database migration and per-day queries (under Electron) |
 | `npm run verify:app` | check the real app end to end, against a copy of your database |
 | `npm run bundle` | rebuild the canvas bundles after editing `src/renderer/canvas/` |
 | `npm run demo` | serve the demo at <http://localhost:8790> |
@@ -114,7 +139,9 @@ committed bundle does not match its sources.
 ```text
 src/
   main/
-    main.js            window, tray, hotkey, clipboard watcher, IPC
+    main.js            window, tray, hotkey, start with Windows, IPC
+    clipwatch.js       clipboard watcher: change detection, private copies skipped
+    settings.js        small settings file (pause, start with Windows)
     db.js              SQLite data layer
     preload.js         allow-listed bridge to the renderer
     assetProtocol.js   clip-asset:// -- serves stored images
@@ -132,8 +159,9 @@ planning/              product decisions, roadmap and audits
 docs/                  screenshots
 ```
 
-The Markdown files at the top level (`MILESTONES.md`, `PHASE-1A-*.md`, …) are
-the planning record of v1.
+`SESSION-NOTES.md` is the working summary of the project — its aim, how it is
+built, where it stands and what comes next. The planning record of v1, whose
+source was lost, is in `planning/archive/v1/`.
 
 ## Data
 
@@ -220,6 +248,15 @@ rm -rf "$CACHE"/[0-9]*          # failed attempts leave numbered temp dirs
 The permanent alternative is to turn on **Settings → System → For developers →
 Developer Mode**, which grants symlink privilege to non-admin users; then the
 normal download path works.
+
+### Nothing new is being captured
+
+Check the *Capturing* pill in the top bar, or *Pause capture* in the tray menu
+— capture may be paused. If ClipCanvas was not running at all, it may not be
+registered to start with Windows: open it once with `npm start` and make sure
+*Start with Windows* is ticked in the tray menu. (An old
+`Start_ClipCanvas_Hidden.vbs` in the Windows Startup folder that points at a
+folder that has since moved does nothing and can be deleted.)
 
 ### The window does not appear
 
