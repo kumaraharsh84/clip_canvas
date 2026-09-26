@@ -1742,11 +1742,11 @@
     }
 
     module.exports = {
-      buildTree, layoutAuto, stripLayout, clipWeight,
+      buildTree, layoutAuto, stripLayout, clipWeight, node, timeParts,
       DEPTH, CARD_FONT_PX, CARD_LINE_H, CARD_CHAR_W, COL_GAP,
       BASE_AREA, MIN_FACTOR, MAX_FACTOR, FONT_SCALE_FLOOR, READABLE_PX,
-      MONTH_SHORT, MONTH_LONG, WEEKDAY_SHORT,
-      toDate, clockLabel, hourLabel, dayLabel, hourKey,
+      MONTH_SHORT, MONTH_LONG, WEEKDAY_SHORT, WEEKDAY_LONG,
+      toDate, clockLabel, hourLabel, dayLabel, longLabel, hourKey,
     };
 
   });
