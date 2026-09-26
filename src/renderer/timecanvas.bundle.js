@@ -1083,7 +1083,7 @@
     // Level-of-detail vocabulary for the Time Canvas.
     //
     // The zoom labels reproduce the roadmap ladder that the v1 check
-    // scratch/archive/v1/verify-time-zoom.js asserted:  500% years | 400% months | 300% days | 200% hours | 100% clips
+    // test/archive/v1/verify-time-zoom.js asserted:  500% years | 400% months | 300% days | 200% hours | 100% clips
     //
     // The level is not derived from an absolute scale: the renderer finds which
     // box currently frames the view (renderer2d.framedNode) and the level is what
@@ -1793,7 +1793,7 @@
     // inside its cell by layout.fillDay, only once you zoom close enough to see
     // them (index.js decides when).
     //
-    // Pure: no DOM, so scratch/verify-timecanvas-2d.js checks it on plain Node.
+    // Pure: no DOM, so test/verify-timecanvas-2d.js checks it on plain Node.
     // ─────────────────────────────────────────────────────────────────────────────
 
     const { CATEGORIES, mix, rgbCss, BG } = require("./classify");
@@ -2277,7 +2277,7 @@
 
     /**
      * Image clips are stored either inline (content is a data URL) or on disk with
-     * `storage_mode`/`asset_path`, per the columns the scratch verifiers exercise.
+     * `storage_mode`/`asset_path`, per the columns the test verifiers exercise.
      */
     function defaultResolve(clip) {
       if (clip.asset_path) {
@@ -3161,7 +3161,7 @@
     //   T                today                 Backspace   fly out one level
     //
     // Wheel direction is unchanged from the DOM version (deltaY > 0 zooms out),
-    // which is what the v1 check scratch/archive/v1/verify-time-zoom.js asserted.
+    // which is what the v1 check test/archive/v1/verify-time-zoom.js asserted.
     // ─────────────────────────────────────────────────────────────────────────────
 
     const DBL_MS = 320;

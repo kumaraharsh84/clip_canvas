@@ -124,7 +124,7 @@ class ImageCache {
 
 /**
  * Image clips are stored either inline (content is a data URL) or on disk with
- * `storage_mode`/`asset_path`, per the columns the scratch verifiers exercise.
+ * `storage_mode`/`asset_path`, per the columns the test verifiers exercise.
  */
 function defaultResolve(clip) {
   if (clip.asset_path) {

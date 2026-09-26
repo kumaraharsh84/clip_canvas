@@ -17,7 +17,7 @@
 // inside its cell by layout.fillDay, only once you zoom close enough to see
 // them (index.js decides when).
 //
-// Pure: no DOM, so scratch/verify-timecanvas-2d.js checks it on plain Node.
+// Pure: no DOM, so test/verify-timecanvas-2d.js checks it on plain Node.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { CATEGORIES, mix, rgbCss, BG } = require("./classify");

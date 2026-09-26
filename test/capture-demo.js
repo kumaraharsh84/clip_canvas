@@ -1,4 +1,4 @@
-// ─── scratch/capture-demo.js ─────────────────────────────────────────────────
+// ─── test/capture-demo.js ─────────────────────────────────────────────────
 // Screenshots of the demo page for the README: the whole year, one month, one
 // day, one hour, and one clip up close.
 //
@@ -7,7 +7,7 @@
 // clipboard history.
 //
 // Usage:
-//   npx electron scratch/capture-demo.js [--out=docs] [--clips=2000]
+//   npx electron test/capture-demo.js [--out=docs] [--clips=2000]
 //
 // --clips must be one of the demo's own sizes: 500, 2000, 10000 or 40000.
 //

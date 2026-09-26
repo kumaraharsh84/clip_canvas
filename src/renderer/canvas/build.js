@@ -2,7 +2,7 @@
 // Concatenates the canvas modules into one browser-loadable bundle.
 //
 // The modules are plain CommonJS so they can be require()d from Node for the
-// headless tests in scratch/. Browsers have no require(), and the renderer may
+// headless tests in test/. Browsers have no require(), and the renderer may
 // run under contextIsolation where Node globals are unavailable, so this emits
 // a self-contained IIFE with a ~20-line module registry rather than pulling in
 // a bundler and a dependency tree.

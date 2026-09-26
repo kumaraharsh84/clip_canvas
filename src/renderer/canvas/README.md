@@ -113,7 +113,7 @@ in this order:
 4. **Otherwise, the language** (JavaScript, Python, SQL, HTML, CSS, …).
 
 The capture side (`src/main/classifyText.js`) uses the same detectors, so what
-is stored and what is shown agree. `node scratch/verify-classify.js` checks both
+is stored and what is shown agree. `node test/verify-classify.js` checks both
 against synthetic examples of every case above.
 
 Known gap: nested YAML (`services:` → `web:` → `image: nginx`) is not recognised
@@ -137,8 +137,8 @@ The timeline strip lights the days currently on screen; click a day to fly to it
 ## Verify
 
 ```bash
-node scratch/verify-timecanvas-2d.js --clips=20000
-npx electron scratch/verify-app.js --perf --shots=out
+node test/verify-timecanvas-2d.js --clips=20000
+npx electron test/verify-app.js --perf --shots=out
 ```
 
 The first runs on plain Node: wrapping is exact and lossless; the calendar has

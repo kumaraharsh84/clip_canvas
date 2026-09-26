@@ -1,16 +1,16 @@
-// ─── scratch/verify-app.js ───────────────────────────────────────────────────
+// ─── test/verify-app.js ───────────────────────────────────────────────────
 // End-to-end check of the app: db.js -> IPC -> preload.js -> index.html ->
 // renderer.js -> the Time Canvas, driven headlessly: it opens on today, a
 // whole year loads its days, a new copy moves nothing outside today, search
 // reveals a clip in a day that was not loaded, and hours and clips render.
 //
-// Same pattern as v1's scratch/archive/v1/benchmark-renderer.js: a thin IPC layer stands in for
+// Same pattern as v1's test/archive/v1/benchmark-renderer.js: a thin IPC layer stands in for
 // main.js so the tray, hotkey and clipboard watcher never start, and the REAL
 // renderer is loaded and inspected. The clip-asset:// handler is the app's own
 // (src/main/assetProtocol.js), not a copy, so image loading is really tested.
 //
 // Usage:
-//   npx electron scratch/verify-app.js [--db=PATH] [--shots=DIR] [--keep-open]
+//   npx electron test/verify-app.js [--db=PATH] [--shots=DIR] [--keep-open]
 //
 // --shots=DIR writes today.png, overview.png, month.png, hour.png and clip.png. The window renders
 // OFFSCREEN: a hidden normal window stops producing compositor frames, and

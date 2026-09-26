@@ -65,7 +65,7 @@
     mountTimelineStrip(el.timeline, tc);
     tc.onData(onData);
 
-    // Handle for the headless harnesses in scratch/ to drive the camera and
+    // Handle for the headless harnesses in test/ to drive the camera and
     // read layout state. Deliberately the only global this file creates.
     window.__tc = tc;
 

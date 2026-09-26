@@ -1,4 +1,4 @@
-// ─── scratch/verify-timecanvas-2d.js ─────────────────────────────────────────
+// ─── test/verify-timecanvas-2d.js ─────────────────────────────────────────
 // Invariant checks for the canvas-2D Time Canvas (src/renderer/canvas/).
 //
 // Unlike the other verifiers in this folder, this one runs on PLAIN NODE -- no
@@ -8,7 +8,7 @@
 // that can be checked headlessly.
 //
 // Usage:
-//   node scratch/verify-timecanvas-2d.js [--clips=3000] [--seed=1]
+//   node test/verify-timecanvas-2d.js [--clips=3000] [--seed=1]
 //
 // Read-only. Touches no database and no file.
 // ─────────────────────────────────────────────────────────────────────────────

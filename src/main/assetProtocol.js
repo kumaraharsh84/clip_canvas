@@ -1,7 +1,7 @@
 // ─── src/main/assetProtocol.js ───────────────────────────────────────────────
 // clip-asset:// -- how the renderer reads stored images.
 //
-// Shared by main.js and scratch/verify-app.js so the verifier exercises the
+// Shared by main.js and test/verify-app.js so the verifier exercises the
 // app's real handler rather than a copy of it that can drift.
 //
 // The renderer runs with contextIsolation and no node access; handing it raw

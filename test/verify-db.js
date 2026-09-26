@@ -1,10 +1,10 @@
-// ─── scratch/verify-db.js ────────────────────────────────────────────────────
+// ─── test/verify-db.js ────────────────────────────────────────────────────
 // Checks for src/main/db.js: the v6 migration, and the queries the Time Canvas
 // loads through.
 //
 // better-sqlite3 is built for Electron's Node, so this runs under Electron:
-//   npm run test:db                         (electron scratch/verify-db.js)
-//   ELECTRON_RUN_AS_NODE=1 electron scratch/verify-db.js
+//   npm run test:db                         (electron test/verify-db.js)
+//   ELECTRON_RUN_AS_NODE=1 electron test/verify-db.js
 //
 // Works on throwaway databases in the OS temp folder. With --live it also
 // migrates a COPY of %APPDATA%/clipcanvas/clipcanvas.db; the real file is

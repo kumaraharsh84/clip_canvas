@@ -6,9 +6,8 @@
 //   %APPDATA%/clipcanvas/clipcanvas.db
 // after the original source was lost. The schema below is not a guess: it was
 // read back out of that file, which already carries 5 applied migrations and
-// 649 live clips. The method names are the ones the renderer harnesses in
-// scratch/ call; those harnesses were written for the v1 module, though, and
-// need updating before they run against this class (see scratch/README.md).
+// 649 live clips. The method names follow the v1 harnesses, kept in
+// test/archive/v1/; test/verify-db.js is what checks this class now.
 //
 // TWO THINGS THAT BITE IF YOU FORGET THEM
 //

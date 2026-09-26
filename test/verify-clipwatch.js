@@ -1,4 +1,4 @@
-// ─── scratch/verify-clipwatch.js ─────────────────────────────────────────────
+// ─── test/verify-clipwatch.js ─────────────────────────────────────────────
 // Checks for src/main/clipwatch.js, the clipboard watcher, against a fake
 // clipboard -- so on plain Node, with no Electron and no real clipboard:
 //
@@ -11,7 +11,7 @@
 //     FAIL_ALERT failures in a row, and working again when it recovers
 //   - without the sequence number, polling by reading still captures text
 //
-// Usage:  node scratch/verify-clipwatch.js
+// Usage:  node test/verify-clipwatch.js
 // ─────────────────────────────────────────────────────────────────────────────
 
 const path = require("path");

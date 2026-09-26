@@ -1,4 +1,4 @@
-// ─── scratch/verify-classify.js ──────────────────────────────────────────────
+// ─── test/verify-classify.js ──────────────────────────────────────────────
 // Regression check for clip classification (src/renderer/canvas/classify.js).
 //
 // Every case below is a SYNTHETIC stand-in for a kind of clip found in real
@@ -10,7 +10,7 @@
 //   - terminal sessions filed as Other code, JSON or SQL
 //   - a Python module whose # ==== banners made it look like prose
 //
-// Usage:  node scratch/verify-classify.js
+// Usage:  node test/verify-classify.js
 // ─────────────────────────────────────────────────────────────────────────────
 
 const path = require("path");

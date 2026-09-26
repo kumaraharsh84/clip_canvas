@@ -154,7 +154,7 @@ src/
     timecanvas.bundle.js   built from canvas/
   assets/              app and tray icon
 demo/                  the canvas on its own, with synthetic clips
-scratch/               checks, benchmarks and diagnostics -- see its README
+test/               checks, benchmarks and diagnostics -- see its README
 planning/              product decisions, roadmap and audits
 docs/                  screenshots
 ```

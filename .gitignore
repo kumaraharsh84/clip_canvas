@@ -11,9 +11,9 @@ data/
 # Local tooling
 .claude/
 
-# Written by scratch/ scripts. Screenshots from verify-app.js --shots show your
+# Written by test/ scripts. Screenshots from verify-app.js --shots show your
 # real clipboard history, so they must never be committed.
 out/
 shots/
-scratch/temp_test_*
+test/temp_test_*
 *.log

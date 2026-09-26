@@ -1,9 +1,9 @@
-# scratch/
+# test/
 
 Checks, benchmarks and diagnostics. Nothing here ships in the app.
 
 ```text
-scratch/
+test/
   verify-*.js, capture-demo.js   the current checks (below)
   diagnostics/                   standalone clipboard and search experiments
   archive/v1/                    v1 harnesses and benchmark results, for the record
@@ -43,14 +43,14 @@ Standalone: they do not load anything from `src/`.
 | `benchmark-search.js` | Times `LIKE` against FTS5 search on a throwaway database |
 
 ```bash
-npx electron scratch/diagnostics/read_clipboard_formats.js
+npx electron test/diagnostics/read_clipboard_formats.js
 ```
 
 `better-sqlite3` is built for Electron's Node, so run the benchmark under
 Electron rather than plain Node:
 
 ```bash
-ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scratch/diagnostics/benchmark-search.js
+ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron test/diagnostics/benchmark-search.js
 ```
 
 ## archive/v1/

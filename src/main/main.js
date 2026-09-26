@@ -2,7 +2,7 @@
 // Electron main process: window, tray, global hotkey, clipboard watcher, IPC.
 //
 // RECONSTRUCTED after the original source was lost. Behaviour follows what the
-// README and planning notes describe and what scratch/*.js expects:
+// README and planning notes describe and what test/*.js expects:
 //   - starts as a tray utility; the panel may start hidden
 //   - Ctrl+Shift+V toggles the panel
 //   - closing the window hides it, it never quits the app
@@ -45,7 +45,7 @@ let captureError = false; // the watcher cannot read the clipboard (see log.js)
 let activeWorkspaceId = null;
 
 // A custom scheme must be registered as privileged BEFORE app ready. The
-// handler lives in assetProtocol.js so scratch/verify-app.js tests this exact
+// handler lives in assetProtocol.js so test/verify-app.js tests this exact
 // code rather than a copy of it.
 registerAssetScheme(protocol);
 

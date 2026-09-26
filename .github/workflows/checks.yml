@@ -16,13 +16,13 @@ jobs:
       # These load the canvas modules straight from src/, so they need no
       # npm install -- and so no Electron download and no native rebuild.
       - name: Classification regression suite
-        run: node scratch/verify-classify.js
+        run: node test/verify-classify.js
 
       - name: Clipboard watcher
-        run: node scratch/verify-clipwatch.js
+        run: node test/verify-clipwatch.js
 
       - name: Time canvas layout invariants
-        run: node scratch/verify-timecanvas-2d.js --clips=20000
+        run: node test/verify-timecanvas-2d.js --clips=20000
 
       - name: Committed bundles match their sources
         run: |

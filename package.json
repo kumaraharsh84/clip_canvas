@@ -9,12 +9,12 @@
     "dev": "electron . --dev",
     "build": "electron-builder",
     "postinstall": "electron-builder install-app-deps",
-    "test": "node scratch/verify-classify.js && node scratch/verify-timecanvas-2d.js && node scratch/verify-clipwatch.js",
+    "test": "node test/verify-classify.js && node test/verify-timecanvas-2d.js && node test/verify-clipwatch.js",
     "bundle": "node src/renderer/canvas/build.js src/renderer/timecanvas.bundle.js && node src/renderer/canvas/build.js demo/timecanvas.bundle.js",
     "demo": "node demo/serve.js",
-    "verify:app": "electron scratch/verify-app.js",
-    "screenshots": "electron scratch/capture-demo.js",
-    "test:db": "electron scratch/verify-db.js"
+    "verify:app": "electron test/verify-app.js",
+    "screenshots": "electron test/capture-demo.js",
+    "test:db": "electron test/verify-db.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
