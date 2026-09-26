@@ -1,0 +1,42 @@
+/* ─── src/renderer/theme.css ──────────────────────────────────────────────────
+   Colours and form controls shared by every ClipCanvas window: the canvas
+   window (style.css) and Settings (settings.css) load this first, so the two
+   cannot drift apart.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --bg: #0b0f14;
+  --panel: #121820;
+  --panel-2: #1a222c;
+  --edge: #26323d;
+  --ink: #c9d6e0;
+  --dim: #7d93a6;
+  --accent: #6fa8dc;
+  --ok: #39d98a;
+  --danger: #e06c75;
+  --warn: #e5b454;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  --sans: system-ui, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+/* The `hidden` attribute is only `display: none` from the UA stylesheet, which
+   any id rule (#details is display:flex, #empty is display:grid) beats on
+   specificity -- so panels marked hidden rendered anyway. */
+[hidden] { display: none !important; }
+
+select, input, button {
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font: inherit;
+}
+
+select, button { cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.danger:hover { border-color: var(--danger); color: var(--danger); }
+button.on { border-color: var(--ok); color: var(--ok); }
