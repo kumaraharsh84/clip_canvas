@@ -111,7 +111,9 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      // The preload uses only contextBridge and ipcRenderer, both available
+      // in the sandbox, so the renderer gets no Node at all.
+      sandbox: true,
       spellcheck: false,
     },
   });

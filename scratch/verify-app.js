@@ -348,7 +348,7 @@ app.whenReady().then(async () => {
       preload: path.join(__dirname, "..", "src", "main", "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,   // as in main.js
       offscreen: OSR,
       backgroundThrottling: false,
     },
