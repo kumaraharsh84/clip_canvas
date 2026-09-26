@@ -36,9 +36,10 @@ const CHANNELS = [
   // app
   "storage:getStats", "storage:openFolder", "settings:getMaxFileSize",
   "window:hide", "window:minimize",
+  "capture:getState", "capture:setPaused",
 ];
 
-const EVENTS = ["clip:added", "clips:changed", "workspace:changed"];
+const EVENTS = ["clip:added", "clips:changed", "workspace:changed", "capture:changed"];
 
 async function safeInvoke(channel, ...args) {
   if (!CHANNELS.includes(channel)) {
@@ -98,6 +99,10 @@ const api = {
   storage: {
     stats: (opts) => safeInvoke("storage:getStats", opts),
     openFolder: () => safeInvoke("storage:openFolder"),
+  },
+  capture: {
+    state: () => safeInvoke("capture:getState"),
+    setPaused: (paused) => safeInvoke("capture:setPaused", paused),
   },
   window: {
     hide: () => safeInvoke("window:hide"),

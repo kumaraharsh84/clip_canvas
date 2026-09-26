@@ -10,7 +10,7 @@
 //
 // The clipboard watcher (clipwatch.js) polls Windows' clipboard sequence
 // number and reads the clipboard only when it changes, and skips copies that
-// password managers mark as private.
+// password managers mark as private. Capture can be paused from the tray.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const {
@@ -26,6 +26,7 @@ const { registerAssetScheme, handleAssetProtocol } = require("./assetProtocol");
 // Stored type of a captured clip -- shares its rules with what the canvas shows.
 const { classify } = require("./classifyText");
 const { ClipboardWatcher } = require("./clipwatch");
+const { Settings } = require("./settings");
 
 const IS_DEV = process.argv.includes("--dev");
 const POLL_MS = 700;
@@ -35,6 +36,7 @@ let tray = null;
 let db = null;
 let storageDir = null;
 let watcher = null;
+let settings = null;
 let activeWorkspaceId = null;
 
 // A custom scheme must be registered as privileged BEFORE app ready. The
@@ -59,6 +61,7 @@ function start() {
   const userData = app.getPath("userData");
   storageDir = path.join(userData, "storage");
   db = new ClipDatabase(path.join(userData, "clipcanvas.db"), storageDir);
+  settings = new Settings(path.join(userData, "settings.json"), { capturePaused: false });
 
   const ws = db.listWorkspaces();
   activeWorkspaceId = (ws.find((w) => w.is_default) || ws[0] || {}).id || null;
@@ -119,15 +122,30 @@ function createWindow() {
 
 function createTray() {
   tray = new Tray(trayIcon());
-  tray.setToolTip("ClipCanvas");
+  updateTray();
+  tray.on("click", togglePanel);
+}
+
+function updateTray() {
+  if (!tray) return;
+  const paused = !!settings.get("capturePaused");
+  tray.setToolTip(paused ? "ClipCanvas — capture paused" : "ClipCanvas");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open ClipCanvas", click: showPanel },
+    { type: "separator" },
+    { label: "Pause capture", type: "checkbox", checked: paused, click: (item) => setPaused(item.checked) },
     { type: "separator" },
     { label: "Open storage folder", click: () => shell.openPath(storageDir) },
     { type: "separator" },
     { label: "Quit", click: () => { app.isQuitting = true; app.quit(); } },
   ]));
-  tray.on("click", togglePanel);
+}
+
+function setPaused(paused) {
+  settings.set("capturePaused", !!paused);
+  if (watcher) watcher.setPaused(!!paused);
+  updateTray();
+  broadcast("capture:changed", { paused: !!paused });
 }
 
 /**
@@ -175,6 +193,7 @@ function startClipboardWatcher() {
     // PNG is encoded only here, once per captured image -- never to check.
     onImage: (img, hash) => captureImage(img.toPNG(), hash, img.getSize()),
   });
+  watcher.setPaused(!!settings.get("capturePaused"));
   watcher.start();
 }
 
@@ -291,6 +310,9 @@ function registerIpc() {
     if (watcher) watcher.noteOwnWrite();
     return { ok: true, id };
   });
+
+  handle("capture:getState", () => ({ paused: !!settings.get("capturePaused") }));
+  handle("capture:setPaused", (paused) => { setPaused(paused); return { paused: !!paused }; });
 
   handle("time:getYears", (wid) => db.getYears(wid || activeWorkspaceId));
   handle("time:getMonths", ({ year, workspaceId } = {}) =>
