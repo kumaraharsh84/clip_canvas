@@ -29,6 +29,21 @@ const Database = require("better-sqlite3");
 const SCHEMA_VERSION = 5;
 const SEARCH_LIMIT_MAX = 200; // matches the clamp the old searchClips applied
 
+// Rebuilds a clip's search entry. Only on the columns the index reads: an
+// unqualified AFTER UPDATE fired on every star, pin, archive and category
+// write, deleting and re-inserting the clip's whole text into the index.
+const FTS_UPDATE_TRIGGER = `
+  CREATE TRIGGER clips_au AFTER UPDATE OF title, content, tags, source, type ON clips BEGIN
+    INSERT INTO clips_fts(clips_fts, rowid, title, content, tags, source)
+    VALUES ('delete', old.id, old.title,
+            CASE WHEN old.type = 'image' THEN '' ELSE old.content END,
+            old.tags, old.source);
+    INSERT INTO clips_fts(rowid, title, content, tags, source)
+    VALUES (new.id, new.title,
+            CASE WHEN new.type = 'image' THEN '' ELSE new.content END,
+            new.tags, new.source);
+  END;`;
+
 class ClipDatabase {
   /**
    * @param {string} dbPath   full path to clipcanvas.db
@@ -165,7 +180,17 @@ class ClipDatabase {
     const exists = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='clips_fts'")
       .get();
-    if (exists) return;
+    if (exists) {
+      // Databases from before v6 have the unqualified update trigger.
+      const au = db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='clips_au'").get();
+      if (!au || !/AFTER\s+UPDATE\s+OF\b/i.test(au.sql)) {
+        db.transaction(() => {
+          db.exec("DROP TRIGGER IF EXISTS clips_au");
+          db.exec(FTS_UPDATE_TRIGGER);
+        })();
+      }
+      return;
+    }
 
     db.exec(`
       CREATE VIRTUAL TABLE clips_fts USING fts5(
@@ -186,18 +211,8 @@ class ClipDatabase {
                 CASE WHEN old.type = 'image' THEN '' ELSE old.content END,
                 old.tags, old.source);
       END;
-
-      CREATE TRIGGER clips_au AFTER UPDATE ON clips BEGIN
-        INSERT INTO clips_fts(clips_fts, rowid, title, content, tags, source)
-        VALUES ('delete', old.id, old.title,
-                CASE WHEN old.type = 'image' THEN '' ELSE old.content END,
-                old.tags, old.source);
-        INSERT INTO clips_fts(rowid, title, content, tags, source)
-        VALUES (new.id, new.title,
-                CASE WHEN new.type = 'image' THEN '' ELSE new.content END,
-                new.tags, new.source);
-      END;
     `);
+    db.exec(FTS_UPDATE_TRIGGER);
     db.exec("INSERT INTO clips_fts(clips_fts) VALUES('rebuild')");
   }
 
