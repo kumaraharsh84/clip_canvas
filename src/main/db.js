@@ -174,6 +174,7 @@ class ClipDatabase {
     this.migrateFts();
     this.backfillTimeColumns();
     this.backfillCategories();
+    this.oneDefaultWorkspace();
 
     const have = db.prepare("SELECT version FROM schema_version WHERE version = ?");
     const mark = db.prepare("INSERT OR IGNORE INTO schema_version (version) VALUES (?)");
@@ -247,6 +248,19 @@ class ClipDatabase {
       updated += rows.length;
     }
     return { updated };
+  }
+
+  /**
+   * Exactly one default workspace: startup captures into it. The first seed
+   * marked Personal, Research and College all default, and the first of them
+   * alphabetically -- College -- won. The oldest default keeps the flag.
+   */
+  oneDefaultWorkspace() {
+    this.db.prepare(`
+      UPDATE workspaces SET is_default = 0
+       WHERE is_default = 1
+         AND id <> (SELECT MIN(id) FROM workspaces WHERE is_default = 1)
+    `).run();
   }
 
   seed() {

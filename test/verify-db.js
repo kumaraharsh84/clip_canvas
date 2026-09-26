@@ -55,6 +55,21 @@ function run() {
     db.close();
   }
 
+  // ── 1b. Exactly one default workspace ─────────────────────────────────────
+  console.log("\n-- default workspace --");
+  {
+    const p = path.join(TMP, "defaults.db");
+    const store = path.join(TMP, "defaults-storage");
+    let db = new ClipDatabase(p, store);
+    db.db.prepare("UPDATE workspaces SET is_default = 1").run(); // as the first seed left them
+    db.close();
+    db = new ClipDatabase(p, store);
+    const defs = db.listWorkspaces().filter((w) => w.is_default);
+    ok("an old database is left with one default workspace, Personal",
+       defs.length === 1 && defs[0].name === "Personal", defs.map((w) => w.name).join(", "));
+    db.close();
+  }
+
   // ── 2. Categories are stored at capture ───────────────────────────────────
   console.log("\n-- categories --");
   const samples = [
