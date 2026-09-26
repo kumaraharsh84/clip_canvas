@@ -67,7 +67,6 @@ function buildCalendar(years, { weekStart = 0, today = new Date() } = {}) {
   root.fixed = true;
   root.dayIndex = new Map();
   root.years = years.slice();
-  const todayMs = startOfDay(today).getTime();
 
   let x0 = Infinity;
   let x1 = -Infinity;
@@ -104,7 +103,6 @@ function buildCalendar(years, { weekStart = 0, today = new Date() } = {}) {
           mo.y + MONTH_HDR + WEEK_HDR + Math.floor(i / 7) * (DAY_H + DAY_GAP),
           DAY_W, DAY_H, DAY_HDR, DAY_PAD, DAY_INNER_GAP);
         dn.dayId = dayId(year, m, d);
-        dn.future = new Date(year, m - 1, d).getTime() > todayMs;
         dn.loaded = false;
         mo.children.push(dn);
         root.dayIndex.set(dn.dayId, dn);
@@ -116,8 +114,21 @@ function buildCalendar(years, { weekStart = 0, today = new Date() } = {}) {
   root.y = 0;
   root.w = Number.isFinite(x1) ? x1 - root.x : YEAR_W;
   root.h = YEAR_H;
+  markFuture(root, today);
   resetCounts(root);
   return root;
+}
+
+/**
+ * Flag the days after `today`, which are drawn dimmer and never say "nothing
+ * copied". Called again when the date changes while the app is open, so the
+ * new today stops looking like the future at midnight.
+ */
+function markFuture(root, today = new Date()) {
+  const todayMs = startOfDay(today).getTime();
+  for (const d of root.dayIndex.values()) {
+    d.future = new Date(d.time.year, d.time.month - 1, d.time.day).getTime() > todayMs;
+  }
 }
 
 function place(n, x, y, w, h, hdr, pad, gap) {
@@ -259,7 +270,7 @@ function toMs(v) {
 }
 
 module.exports = {
-  buildCalendar, yearsFor, applyCounts, resetCounts, dayNode, dayOf, dayId,
+  buildCalendar, yearsFor, applyCounts, resetCounts, markFuture, dayNode, dayOf, dayId,
   GEOMETRY: {
     EPOCH_YEAR, DAY_W, DAY_H, DAY_GAP, DAY_HDR, DAY_PAD, WEEK_ROWS,
     MONTH_W, MONTH_H, MONTH_PAD, MONTH_HDR, WEEK_HDR, MONTH_GAP,

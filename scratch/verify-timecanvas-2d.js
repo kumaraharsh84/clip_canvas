@@ -137,6 +137,28 @@ let moved = 0;
 for (const [id, d] of cal1.dayIndex) if (rect(d) !== rect(cal3.dayIndex.get(id))) moved++;
 ok("a day's place does not depend on which years are shown", moved === 0, `${moved} of ${cal1.dayIndex.size} differ`);
 
+// New Year's Eve to 1 January with the app open: the new year's calendar
+// appears beside the old one, the old one stays put, and the new today stops
+// being drawn as the future.
+const eve = new Date(2026, 11, 31, 23, 59);
+const jan1 = new Date(2027, 0, 1, 0, 1);
+const soFar = [{ year: 2026, month: 12, day: 31 }];
+const beforeNY = Cal.buildCalendar(Cal.yearsFor(soFar, eve), { today: eve });
+const afterNY = Cal.buildCalendar(Cal.yearsFor(soFar, jan1), { today: jan1 });
+let shifted = 0;
+for (const [id, d] of beforeNY.dayIndex) if (rect(d) !== rect(afterNY.dayIndex.get(id))) shifted++;
+const [y26, y27] = afterNY.children;
+ok("on 1 January the new year's calendar appears beside the old one",
+   beforeNY.years.join() === "2026" && afterNY.years.join() === "2026,2027" && y27.x > y26.x + y26.w,
+   `${beforeNY.years.join()} -> ${afterNY.years.join()}`);
+ok("the old year does not move", shifted === 0, `${shifted} of ${beforeNY.dayIndex.size} days moved`);
+const open = Cal.buildCalendar([2026, 2027], { today: eve });
+const firstDay = open.dayIndex.get("2027-1-1");
+const wasFuture = firstDay.future;
+Cal.markFuture(open, jan1);
+ok("at midnight the new today stops looking like the future",
+   wasFuture && !firstDay.future && open.dayIndex.get("2027-1-2").future);
+
 // ── 4. Counts: the calendar without loading a single clip ────────────────────
 console.log(`\n-- counts (${N} clips) --`);
 const clips = makeClips(N);

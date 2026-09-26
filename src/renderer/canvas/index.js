@@ -343,6 +343,7 @@ function mountTimeCanvas(host, opts = {}) {
     const id = d ? d.dayId : null;
     const changed = todayId !== null && id !== todayId;
     todayId = id;
+    if (changed) Cal.markFuture(root, now);
     return changed;
   }
   const nowTimer = setInterval(() => {
