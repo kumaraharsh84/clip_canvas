@@ -15,12 +15,26 @@ const fs = require("fs");
 
 const ASSET_SCHEME = "clip-asset";
 
-/** Must run before app `ready`. */
+/**
+ * Must run before app `ready`.
+ *
+ * The canvas fetch()es thumbnails from a file:// page, which is a cross-origin
+ * request; since Electron ~35 Chromium refuses those for any scheme not
+ * registered as standard and CORS-enabled ("Cross origin requests are only
+ * supported for protocol schemes: ... http, https"). Responses carry
+ * Access-Control-Allow-Origin for the same reason. The scheme exists only
+ * inside this app, and the handler still serves nothing outside storageDir.
+ */
 function registerAssetScheme(protocol) {
   protocol.registerSchemesAsPrivileged([
-    { scheme: ASSET_SCHEME, privileges: { secure: true, supportFetchAPI: true, bypassCSP: false } },
+    {
+      scheme: ASSET_SCHEME,
+      privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, bypassCSP: false },
+    },
   ]);
 }
+
+const CORS = { "access-control-allow-origin": "*" };
 
 function handleAssetProtocol(protocol, storageDir) {
   const root = path.normalize(storageDir);
@@ -30,13 +44,13 @@ function handleAssetProtocol(protocol, storageDir) {
     const full = path.normalize(path.join(root, rel));
 
     if (!full.startsWith(root)) {
-      return new Response("forbidden", { status: 403 });
+      return new Response("forbidden", { status: 403, headers: CORS });
     }
     try {
       const data = fs.readFileSync(full);
-      return new Response(data, { headers: { "content-type": mimeFor(full) } });
+      return new Response(data, { headers: { ...CORS, "content-type": mimeFor(full) } });
     } catch (_) {
-      return new Response("not found", { status: 404 });
+      return new Response("not found", { status: 404, headers: CORS });
     }
   });
 }
