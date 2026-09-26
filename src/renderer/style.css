@@ -33,7 +33,15 @@ body {
   flex-wrap: wrap;
 }
 
-.brand { font-weight: 600; letter-spacing: .02em; margin-right: 4px; }
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  margin-right: 4px;
+}
+.brand img { display: block; }
 
 .field {
   display: flex;

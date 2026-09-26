@@ -214,6 +214,7 @@ const OVERVIEW = `(async () => {
     timeline: !!document.querySelector("#timeline canvas.timeline-strip"),
     info: document.getElementById("info-title").textContent,
     domNodes: document.getElementsByTagName("*").length,
+    logo: (document.querySelector("#topbar .brand img") || {}).naturalWidth || 0,
     emptyShown: !document.getElementById("empty").hidden,
     painted, tainted,
     total: root.count, daysWithClips, years: root.years,
@@ -375,6 +376,7 @@ const SETTINGS = `(async () => {
     stats: document.getElementById("stats").textContent,
     autostart: document.getElementById("autostart").checked,
     capture: document.getElementById("capture").checked,
+    logo: (document.querySelector(".about-logo") || {}).naturalWidth || 0,
   };
 
   document.getElementById("hotkey").click();
@@ -488,6 +490,7 @@ app.whenReady().then(async () => {
     ok("info panel populated", !!o.info.trim(), JSON.stringify(o.info.trim()));
     ok("workspaces populated", o.workspaces.length > 0, o.workspaces.join(" | "));
     ok("DOM stays small (canvas, not DOM nodes)", o.domNodes < 260, o.domNodes + " nodes");
+    ok("the logo shows in the top bar", o.logo > 0, o.logo + " px");
     info(o.hud);
     await shot("overview");
 
@@ -602,6 +605,7 @@ app.whenReady().then(async () => {
     ok("shows the current shortcut as key caps", st.shown === hotkeys.display(hotkeys.DEFAULT_HOTKEY), st.shown);
     ok("shows the version and storage figures", st.version === "0.0.0-verify" && /649 clips/.test(st.stats), st.stats);
     ok("shows capture on and Start with Windows on", st.capture && st.autostart);
+    ok("shows the logo under About", st.logo > 0, st.logo + " px");
     ok("clicking the keys starts recording, and held keys show", st.recording && /Ctrl.*Alt/.test(st.held), st.held);
     ok("a recorded Ctrl + Alt + K is saved and confirmed",
        st.saved.caps === "Ctrl + Alt + K" && st.saved.msg.cls.includes("ok") && st.saved.reset, JSON.stringify(st.saved));

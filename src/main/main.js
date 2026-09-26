@@ -141,6 +141,7 @@ function createWindow() {
     frame: true,
     backgroundColor: "#0d0f12",
     title: "ClipCanvas",
+    icon: appIcon(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -193,6 +194,7 @@ function openSettings() {
     show: false,
     backgroundColor: "#0d0f12",
     title: "ClipCanvas Settings",
+    icon: appIcon(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -209,7 +211,7 @@ function openSettings() {
 }
 
 function createTray() {
-  tray = new Tray(trayIcon());
+  tray = new Tray(appIcon());
   updateTray();
   tray.on("click", togglePanel);
 }
@@ -358,11 +360,12 @@ function applyAutoStart(enabled) {
 }
 
 /**
- * src/assets/icon.ico, then icon.png, then a drawn placeholder. The tray must
- * always get an icon: the window starts hidden, so an app with no tray would
- * have no way to be opened.
+ * The app icon (src/assets/icon.ico, built from logo.svg by `npm run icons`),
+ * then icon.png, then a drawn placeholder. For the tray, which must always get
+ * one -- the window starts hidden, so an app with no tray could not be opened
+ * -- and for the windows, which in `npm start` would otherwise show Electron's.
  */
-function trayIcon() {
+function appIcon() {
   const icoPath = path.join(__dirname, "..", "assets", "icon.ico");
   if (fs.existsSync(icoPath)) return nativeImage.createFromPath(icoPath);
 
