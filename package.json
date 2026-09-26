@@ -35,7 +35,8 @@
     "screenshots": "electron test/capture-demo.js",
     "test:db": "electron test/verify-db.js",
     "lint": "eslint .",
-    "icons": "electron tools/build-icons.js"
+    "icons": "electron tools/build-icons.js",
+    "gif": "electron tools/record-gif.js"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
@@ -46,6 +47,7 @@
     "electron": "^43.7.5",
     "electron-builder": "^26.15.3",
     "eslint": "^10.11.0",
+    "gifenc": "^1.0.3",
     "globals": "^17.12.0"
   },
   "build": {

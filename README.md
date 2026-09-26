@@ -12,12 +12,13 @@ cell, and it never moves: zoom into a day and it holds its hours, and each hour
 holds the clips you copied in it, in the order you copied them. You don't open
 folders; you zoom in.
 
-![A year of clips: every day is a cell, filled with what was copied that day](docs/overview.png)
+<p align="center">
+  <img src="docs/zoom.gif" width="640" alt="Flying from a whole year of clips, through a month, a day and an hour, down to one clip whose every line is readable, and back out">
+</p>
 
 - **Everything stays where it is.** A day's place comes from its date alone,
   like a drawing in AutoCAD. Copying something new changes today and nothing
   else; June is always where June was.
-
 - **In the order you copied.** An image copied between two text clips sits
   between them. Nothing is filed away by type.
 - **The whole clip.** Every card holds its complete text, never a two-line
@@ -30,6 +31,8 @@ folders; you zoom in.
 - **Local.** One SQLite file and a folder of images on your own machine. Nothing
   is uploaded.
 
+![A year of clips: every day is a cell, filled with what was copied that day](docs/overview.png)
+
 ![One hour: every card is the complete clip, with the time it was copied](docs/hour.png)
 
 | A month | A day |
@@ -38,7 +41,7 @@ folders; you zoom in.
 
 ![One clip, up close: syntax-coloured, complete](docs/clip.png)
 
-<sub>Screenshots are from the demo page (`npm run demo`), which generates
+<sub>The animation and screenshots are from the demo page (`npm run demo`), which generates
 synthetic clips.</sub>
 
 ## Quick start
@@ -146,6 +149,7 @@ source tree, where every file is a box and every box is readable up close.
 | `npm run demo` | serve the demo at <http://localhost:8790> |
 | `npm run screenshots` | retake the screenshots in `docs/` from the demo |
 | `npm run icons` | rebuild `src/assets/icon.ico` and `icon.png` from `logo.svg` |
+| `npm run gif` | re-record `docs/zoom.gif` from the demo |
 
 The renderer runs under context isolation, so it loads one prebuilt bundle
 instead of modules. GitHub Actions runs both checks on every push and fails if a
@@ -175,7 +179,7 @@ src/
     timecanvas.bundle.js   built from canvas/
   assets/              logo.svg (+ logo-small.svg for 16-32 px) and the icons built from them
 demo/                  the canvas on its own, with synthetic clips
-tools/                 build-icons.js -- `npm run icons`
+tools/                 build-icons.js (`npm run icons`), record-gif.js (`npm run gif`)
 test/                  checks, benchmarks and diagnostics -- see its README
 planning/              product decisions, roadmap and audits
 docs/                  screenshots
