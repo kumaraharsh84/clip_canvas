@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!--
+    The ClipCanvas logo for 16-32 px (the tray, title bars, small taskbar):
+    logo.svg with the detail a few pixels cannot show taken out - four
+    blocks instead of seven, no text lines, a heavier clip - drawn on a
+    32-unit grid so edges land on whole pixels.
+  -->
+  <rect width="32" height="32" rx="7" fill="#101820"/>
+  <rect x="5" y="5" width="22" height="25" rx="3.5" fill="#172230" stroke="#56708a" stroke-width="1.5"/>
+  <rect x="8" y="10" width="9" height="8" rx="1.2" fill="#5b9be0"/>
+  <rect x="18" y="10" width="6" height="8" rx="1.2" fill="#e0a458"/>
+  <rect x="8" y="19" width="6" height="8" rx="1.2" fill="#3fc1ad"/>
+  <rect x="15" y="19" width="9" height="8" rx="1.2" fill="#9d74e0"/>
+  <rect x="10" y="2" width="12" height="6" rx="2" fill="#dfe7ee"/>
+</svg>

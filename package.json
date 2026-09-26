@@ -34,7 +34,8 @@
     "verify:app": "electron test/verify-app.js",
     "screenshots": "electron test/capture-demo.js",
     "test:db": "electron test/verify-db.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "icons": "electron tools/build-icons.js"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

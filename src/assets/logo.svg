@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!--
+    ClipCanvas logo: a clipboard whose sheet is the time mosaic - the app's
+    own view of your history, one block per clip in the canvas's category
+    colours (text, image, link, JavaScript, shell, code, HTML).
+    Source of truth for every icon size: `npm run icons` renders them.
+    logo-small.svg is the same idea simplified for 16-32 px.
+  -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d2b3a"/>
+      <stop offset="1" stop-color="#0a0f15"/>
+    </linearGradient>
+    <linearGradient id="board" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#172230"/>
+      <stop offset="1" stop-color="#101820"/>
+    </linearGradient>
+    <linearGradient id="clip" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f1f5f8"/>
+      <stop offset="1" stop-color="#aebdca"/>
+    </linearGradient>
+  </defs>
+
+  <!-- app tile -->
+  <rect width="256" height="256" rx="58" fill="url(#tile)"/>
+  <rect x="2" y="2" width="252" height="252" rx="56" fill="none" stroke="#ffffff" stroke-opacity=".07" stroke-width="3"/>
+
+  <!-- the board -->
+  <rect x="46" y="44" width="164" height="186" rx="24" fill="url(#board)" stroke="#44596d" stroke-width="5"/>
+
+  <!-- the sheet: clips in the order they were copied, sized like cards -->
+  <g>
+    <rect x="64" y="76" width="76" height="56" rx="7" fill="#5b9be0"/>
+    <rect x="147" y="76" width="45" height="56" rx="7" fill="#e0a458"/>
+    <rect x="64" y="139" width="36" height="34" rx="6" fill="#3fc1ad"/>
+    <rect x="107" y="139" width="52" height="34" rx="6" fill="#e3c567"/>
+    <rect x="166" y="139" width="26" height="34" rx="6" fill="#e2699d"/>
+    <rect x="64" y="180" width="62" height="32" rx="6" fill="#9d74e0"/>
+    <rect x="133" y="180" width="59" height="32" rx="6" fill="#5ec46f"/>
+  </g>
+  <!-- every card holds its whole text: lines, as the canvas draws them far away -->
+  <g fill="#ffffff" fill-opacity=".62">
+    <rect x="73" y="88" width="50" height="6" rx="3"/>
+    <rect x="73" y="100" width="58" height="6" rx="3"/>
+    <rect x="73" y="112" width="36" height="6" rx="3"/>
+    <rect x="73" y="190" width="40" height="5" rx="2.5"/>
+    <rect x="73" y="200" width="28" height="5" rx="2.5"/>
+  </g>
+  <!-- the image clip: a picture -->
+  <path d="M154 122 l12 -16 l8 10 l6 -7 l9 13 z" fill="#ffffff" fill-opacity=".6"/>
+  <circle cx="181" cy="92" r="5" fill="#ffffff" fill-opacity=".6"/>
+
+  <!-- the clip -->
+  <rect x="86" y="34" width="84" height="30" rx="10" fill="#000000" fill-opacity=".35" transform="translate(0 5)"/>
+  <rect x="108" y="20" width="40" height="26" rx="13" fill="url(#clip)"/>
+  <rect x="86" y="32" width="84" height="30" rx="10" fill="url(#clip)"/>
+  <rect x="119" y="26" width="18" height="9" rx="4.5" fill="#172230"/>
+</svg>
