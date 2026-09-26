@@ -133,7 +133,7 @@ function detect(clip) {
     // so they are certain -- and "name: demo" lines would otherwise read as
     // short prose.
     if (lang.score === Infinity) return CATEGORIES[lang.lang];
-    if (!startsLikeSource(head) && looksLikeProse(head)) {
+    if (!startsLikeSource(head) && !looksLikeSql(head, lang) && looksLikeProse(head)) {
       return CATEGORIES.prose;
     }
     return CATEGORIES[lang.lang] || CATEGORIES.code;
@@ -295,6 +295,26 @@ function startsLikeSource(src) {
   return !!first && SOURCE_START.test(first);
 }
 
+/**
+ * SQL reads almost like English -- SELECT, FROM, WHERE and ORDER BY are words --
+ * and has few symbols, so the prose test cannot tell it apart. It has a shape
+ * prose does not: most lines BEGIN with a clause keyword, and it contains SQL
+ * syntax (a comparison, *, ;, a quoted value, or a snake_case / dotted name).
+ * Requiring both keeps a prose to-do list ("Select the file... / Update the
+ * name... / Delete old files.") prose.
+ */
+const SQL_CLAUSE = /^\s*(?:select|from|where|and|or|not|order\s+by|group\s+by|having|limit|offset|(?:(?:left|right|inner|outer|full|cross)\s+)?join|on|union|insert\s+into|values|update|set|delete\s+from|create|alter|drop|with|returning|begin|commit|rollback|case|when|then|else|end)\b/i;
+const SQL_SYNTAX = /[=<>*;(]|\b\w+[._]\w+\b|'[^'\n]*'/;
+
+function looksLikeSql(src, lang = scoreLanguage(src)) {
+  if (lang.lang !== "sql") return false;
+  const lines = src.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return false;
+  let clause = 0;
+  for (const l of lines) if (SQL_CLAUSE.test(l) || /^[()]/.test(l)) clause++;
+  return clause / lines.length >= 0.6 && SQL_SYNTAX.test(src);
+}
+
 // ── Prose ────────────────────────────────────────────────────────────────────
 // Language-agnostic on purpose. A test built on English function words scores
 // a Hinglish message ("Theek hai, seedha jawab: ...") at zero, and that is a
@@ -416,6 +436,6 @@ function hash01(v) {
 module.exports = {
   CATEGORIES, CATEGORY_LIST, TOKEN, BG,
   categoryOf, blockOf, detectLanguage, scoreLanguage,
-  looksLikeTerminal, looksLikeProse, startsLikeSource, proseStats,
+  looksLikeTerminal, looksLikeProse, startsLikeSource, looksLikeSql, proseStats,
   mix, rgbCss, hexToRgb,
 };
