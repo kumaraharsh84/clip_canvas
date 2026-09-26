@@ -44,6 +44,10 @@ npm install     # also rebuilds better-sqlite3 for Electron (postinstall)
 npm start
 ```
 
+Or install it like any Windows app: `npm run build` writes
+`dist/ClipCanvas Setup <version>.exe`. What changed in each version is in
+[CHANGELOG.md](CHANGELOG.md).
+
 ClipCanvas starts in the system tray. Press `Ctrl+Shift+V`, or click the tray
 icon, to open or hide the window. Closing the window hides it; quit from the
 tray menu. It starts with Windows from then on (untick *Start with Windows* in
@@ -123,7 +127,8 @@ source tree, where every file is a box and every box is readable up close.
 | `npm start` | run the app |
 | `npm run dev` | run it with DevTools, and show the window at launch |
 | `npm run build` | build the Windows installer into `dist/` |
-| `npm test` | classification, calendar and layout checks, on plain Node |
+| `npm test` | classification, calendar, layout, clipboard watcher and image-protocol checks, on plain Node |
+| `npm run lint` | ESLint (correctness rules only) |
 | `npm run test:db` | database migration and per-day queries (under Electron) |
 | `npm run verify:app` | check the real app end to end, against a copy of your database |
 | `npm run bundle` | rebuild the canvas bundles after editing `src/renderer/canvas/` |
@@ -170,9 +175,10 @@ Everything is stored in Electron's user-data folder:
 ```text
 C:\Users\<you>\AppData\Roaming\clipcanvas\clipcanvas.db     the database
 C:\Users\<you>\AppData\Roaming\clipcanvas\storage\images\   captured images
+C:\Users\<you>\AppData\Roaming\clipcanvas\logs\              clipcanvas.log: errors and events
 ```
 
-The tray menu's *Open storage folder* opens the second one.
+The tray menu opens the storage folder and the log.
 
 - `created_at` is Unix **seconds**. Each clip also stores `year`, `month`,
   `day`, `weekday` and `hour`, which the time queries group by.
@@ -251,8 +257,8 @@ normal download path works.
 
 ### Nothing new is being captured
 
-Check the *Capturing* pill in the top bar, or *Pause capture* in the tray menu
-— capture may be paused. If ClipCanvas was not running at all, it may not be
+Check the pill in the top bar. *Capture paused*: click it to resume. *Capture
+error*: the clipboard cannot be read — tray menu → *Open log file* says why. If ClipCanvas was not running at all, it may not be
 registered to start with Windows: open it once with `npm start` and make sure
 *Start with Windows* is ticked in the tray menu. (An old
 `Start_ClipCanvas_Hidden.vbs` in the Windows Startup folder that points at a

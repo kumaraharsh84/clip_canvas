@@ -17,12 +17,15 @@ These run against the code in `src/` as it is now.
 | --- | --- | --- |
 | `verify-classify.js` | Node | Clip classification — prose, terminal sessions, code by language — and that the type stored at capture time agrees with what the canvas shows |
 | `verify-timecanvas-2d.js` | Node | Calendar and layout invariants on synthetic clips: every day in its weekday's column, wrapping is lossless, boxes never overlap, clips stay in copy order, every card's full text fits, and a new copy moves nothing outside its own day |
+| `verify-clipwatch.js` | Node | The clipboard watcher against a fake clipboard: captures once, skips launch contents, repeated images, private copies and copy-back, stays quiet while paused, retries a failed read, reports capture broken and recovered, and refuses a clipboard API it does not know |
+| `verify-asset-protocol.js` | Node | The `clip-asset://` handler: serves stored images with the headers the canvas needs, and nothing outside the storage folder, however the path is spelled |
 | `verify-db.js` | Electron | The schema v6 migration, stored categories, and the per-day queries the canvas loads through; `--live` also migrates a copy of your database |
-| `verify-app.js` | Electron | The whole app — database, IPC, preload, renderer, canvas — against a **copy** of your database: opens on today, loads a year, a new copy moves nothing else, search reveals a clip |
+| `verify-app.js` | Electron | The whole app — database, IPC, preload, renderer, canvas — against a **copy** of your database: opens on today, loads a year, a new copy moves nothing else, search reveals a clip, thumbnails and text render, and the watcher can run on this Electron's clipboard |
 | `capture-demo.js` | Electron | The README screenshots, taken from the demo page and its synthetic clips |
 
 ```bash
-npm test                          # both Node checks
+npm test                          # the four Node checks
+npm run lint                      # ESLint
 npm run test:db                   # the database check
 npm run verify:app                # the end-to-end check
 npm run screenshots               # rewrite docs/*.png
