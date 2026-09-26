@@ -4,7 +4,7 @@ What changed in each version of ClipCanvas. Newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.2.0] — 2026-09-26
 
 ### Added
 
@@ -12,6 +12,8 @@ What changed in each version of ClipCanvas. Newest first. The format follows
   -- on the windows, the taskbar, the tray, the installer, the top bar and the
   README. A simplified version keeps it clear at 16-32 px. `npm run icons`
   rebuilds every size from the SVG.
+- **An animation at the top of the README**: a year of (synthetic) clips flown
+  through down to one readable clip. `npm run gif` records it from the demo.
 - **Settings window** — tray menu, the top bar or `Ctrl+,`: the shortcut,
   capture, Start with Windows, how much is stored, the storage folder and log,
   and the version. Changes save as you make them.
@@ -97,6 +99,6 @@ A rewrite, after the v1 source was lost; the first version pushed to GitHub.
 - Classification of prose, terminal sessions and code by language.
 - A demo page with synthetic clips, and a Windows installer.
 
-[Unreleased]: https://github.com/kumaraharsh84/clip_canvas/compare/v2.1.0...HEAD
+[2.2.0]: https://github.com/kumaraharsh84/clip_canvas/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/kumaraharsh84/clip_canvas/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/kumaraharsh84/clip_canvas/releases/tag/v2.0.0
