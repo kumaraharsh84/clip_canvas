@@ -30,277 +30,128 @@ them. You don't open folders; you zoom in.
 <sub>Screenshots are from the demo page (`npm run demo`), which generates
 synthetic clips.</sub>
 
-## Quick Start
+## Quick start
 
 ```bash
-# 1. Install dependencies
-npm install
-
-# 2. Rebuild native dependencies for Electron
-npx electron-builder install-app-deps
-
-# 3. Run the app
+npm install     # also rebuilds better-sqlite3 for Electron (postinstall)
 npm start
 ```
 
-The panel opens from the system tray and may start hidden. Toggle it with `Ctrl+Shift+V` or the ClipCanvas tray icon.
+ClipCanvas starts in the system tray. Press `Ctrl+Shift+V`, or click the tray
+icon, to open or hide the window. Closing the window hides it; quit from the
+tray menu.
 
-## Important Windows Note
-
-If Electron starts like plain Node and crashes with `app.getPath` being undefined, clear `ELECTRON_RUN_AS_NODE` before launching:
-
-```powershell
-Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
-npm start
-```
-
-For a one-off direct launch:
-
-```powershell
-Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
-.\node_modules\.bin\electron.cmd .
-```
-
-## Native SQLite Dependency
-
-ClipCanvas uses `better-sqlite3`, which is a native module. Native modules must match Electron's Node ABI, not only the system Node version.
-
-After `npm install`, run:
+To build the Windows installer:
 
 ```bash
-npx electron-builder install-app-deps
+npm run build   # dist/ClipCanvas Setup <version>.exe
 ```
 
-This installs or rebuilds `better-sqlite3` for the installed Electron runtime. This fixes errors like:
+## Using it
 
-```text
-The module better_sqlite3.node was compiled against a different Node.js version.
-NODE_MODULE_VERSION 137. This version of Node.js requires NODE_MODULE_VERSION 121.
-```
+| | |
+| --- | --- |
+| scroll / pinch | zoom toward the cursor |
+| drag | pan, with inertia |
+| click | select a clip and open its details |
+| double-click | fly into the box under the cursor |
+| right-click / Backspace | fly back out one level |
+| F / Home | fit everything |
+| + / − · arrows | zoom · pan |
+| / | search — Enter runs it, and clicking a result flies to that clip |
+| Esc | close search or details, then hide the window |
 
-Current dependency notes:
+- **Top bar** — choose the workspace and board, and show Active, Starred,
+  Pinned, Archived, Trash or All clips. New clips are saved to the active
+  workspace; Personal, Research and College are created on first run.
+- **Details** — the full text or image, an editable title, and Copy back,
+  Star, Pin, Archive and Delete. Delete moves a clip to Trash.
+- **Timeline strip** — the days on screen are lit; click a day to fly to it.
+- **Info panel** — where you are, what is under the cursor, and how many clips
+  of each kind are in view.
 
-- `better-sqlite3`: `^12.10.0`
-- `electron`: `^29.0.0`
-- `electron-builder`: `^24.9.1`
+## How it works
+
+- **Capture.** The main process polls the clipboard every 700 ms. Images are
+  checked first and saved as PNG under `storage/images/YYYY/MM/`; text is
+  classified as a link, code or prose and stored in SQLite. Whatever is already
+  on the clipboard when the app starts is not captured.
+- **Storage.** [better-sqlite3](https://github.com/WiseLibs/better-sqlite3),
+  with additive migrations and an FTS5 search index kept in step by triggers.
+  Images reach the window through a `clip-asset://` protocol that resolves
+  nothing outside the storage folder.
+- **Canvas.** A canvas-2D engine in [`src/renderer/canvas`](src/renderer/canvas/README.md):
+  an order-preserving strip treemap for the time boxes, per-card font fitting
+  so that every card holds its whole text, and four levels of detail, from
+  solid tiles to syntax-coloured glyphs. Laying out 20,000 clips takes about
+  half a second.
+- **Isolation.** The window runs with context isolation and a strict
+  Content-Security-Policy. The preload script exposes an allow-list of IPC
+  channels, never `ipcRenderer` itself.
+
+The canvas's look is inspired by code-city visualisers that fly through a
+source tree, where every file is a box and every box is readable up close.
 
 ## Scripts
 
-```bash
-npm start       # Run Electron app
-npm run dev     # Run Electron app with --dev
-npm run build   # Build Windows installer with electron-builder
-```
-
-## Project Structure
-
-```text
-clipcanvas/
-  src/
-    main/
-      main.js       Electron main process: window, tray, clipboard watcher
-      db.js         SQLite database layer using better-sqlite3
-      preload.js    Secure bridge between main and renderer
-    renderer/
-      index.html    Panel UI shell
-      style.css     Dark UI styles
-      renderer.js   UI logic for views, search, cards, and actions
-  package.json
-  README.md
-```
-
-The SQLite database is created in Electron's user data directory, for example:
-
-```text
-C:\Users\<you>\AppData\Roaming\clipcanvas\clipcanvas.db
-```
-
-## What's In v2
-
-| Feature | Status |
+| | |
 | --- | --- |
-| Clipboard hook for text, code, URL, and image clips | Done |
-| Local SQLite storage | Done |
-| System tray and `Ctrl+Shift+V` hotkey | Done |
-| Canvas view grouped by clip type | Done |
-| Timeline view, newest first | Done |
-| Recall/search view | Done |
-| Copy-back to clipboard | Done |
-| Delete clips | Done |
-| Select mode | Done |
-| Auto-tagging by type and URL domain | Done |
-| Workspaces: Personal, Research, College, and custom spaces | Done |
-| Boards inside each workspace | Done |
-| Starred, Pinned, Archived, and Trash filters | Done |
-| Clip details panel for title, tags, workspace, board, and state | Done |
-| Smart canvas grouping and masonry layout | Done |
-| Lightweight minimap and zoom controls | Done |
-| Storage dashboard | Done |
+| `npm start` | run the app |
+| `npm run dev` | run it with DevTools, and show the window at launch |
+| `npm run build` | build the Windows installer into `dist/` |
+| `npm test` | classification and layout checks, on plain Node |
+| `npm run verify:app` | check the real app end to end, against a copy of your database |
+| `npm run bundle` | rebuild the canvas bundles after editing `src/renderer/canvas/` |
+| `npm run demo` | serve the demo at <http://localhost:8790> |
+| `npm run screenshots` | retake the screenshots in `docs/` from the demo |
 
-## Workspace Canvas Milestone
+The renderer runs under context isolation, so it loads one prebuilt bundle
+instead of modules. GitHub Actions runs both checks on every push and fails if a
+committed bundle does not match its sources.
 
-ClipCanvas now works as both a clipboard manager and a visual knowledge workspace.
-
-### Workspaces
-
-Default workspaces:
-
-- Personal
-- Research
-- College
-
-Users can create custom workspaces. New clipboard captures are saved into the active workspace.
-
-### Boards
-
-Boards live inside workspaces. Example seeded boards:
-
-- Research: MongoDB, React, APIs
-- College: Final Year Project, Internship, Viva
-
-Supported board actions:
-
-- Create board
-- Rename board
-- Delete board
-- Move clips between boards
-- Filter the Canvas, Timeline, and Recall views by board
-
-### Clip States
-
-Supported clip states:
-
-- Starred
-- Pinned
-- Archived
-- Trash
-
-Pinned clips are shown first and remain visible on the Canvas while working in a selected board. Archive actions do not archive starred clips. Delete moves clips to Trash; Empty Trash permanently removes records and attempts to delete physical file clips.
-
-### Canvas
-
-The Canvas now groups clips by type:
-
-- Images
-- URLs
-- Text
-- Code
-- Files
-
-The layout uses masonry-style columns with consistent spacing and no card overlap. Cards can be dragged onto board names in the sidebar to move them between boards.
-
-### Minimap
-
-The Canvas includes a lightweight minimap in the bottom-right corner. It reflects the current card layout, shows a viewport rectangle, supports click-to-navigate, and updates with scroll and zoom.
-
-### Clip Details
-
-Selecting a clip opens the details panel. Editable fields:
-
-- Title
-- Tags
-- Workspace
-- Board
-- Pinned
-- Starred
-- Archived
-
-Displayed metadata:
-
-- Type
-- Date
-- Source
-
-### Storage Dashboard
-
-The Settings view displays:
-
-- Total storage used
-- Breakdown by images, files, PDFs, and text
-- Largest clips
-- Oldest clips
-
-Actions:
-
-- Archive old clips
-- Empty Trash
-- Open storage folder
-
-## Schema And Migrations
-
-The app uses additive SQLite migrations in `src/main/db.js`. Existing installs are migrated at startup with `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN`, and default data seeding.
-
-Current tables:
+## Project structure
 
 ```text
-workspaces
-  id
-  name
-  slug
-  is_default
-  created_at
-  updated_at
-
-boards
-  id
-  workspace_id
-  name
-  created_at
-  updated_at
-
-clips
-  id
-  type
-  content
-  title
-  source
-  tags
-  group_id
-  workspace_id
-  board_id
-  is_starred
-  is_archived
-  is_pinned
-  deleted_at
-  canvas_x
-  canvas_y
-  created_at
-  updated_at
+src/
+  main/
+    main.js            window, tray, hotkey, clipboard watcher, IPC
+    db.js              SQLite data layer
+    preload.js         allow-listed bridge to the renderer
+    assetProtocol.js   clip-asset:// -- serves stored images
+    classifyText.js    the type a captured clip is stored as
+  renderer/
+    index.html         UI shell
+    style.css
+    renderer.js        top bar, info panel, details, search
+    canvas/            the Time Canvas engine -- see its README
+    timecanvas.bundle.js   built from canvas/
+  assets/              app and tray icon
+demo/                  the canvas on its own, with synthetic clips
+scratch/               checks, benchmarks and diagnostics -- see its README
+planning/              product decisions, roadmap and audits
+docs/                  screenshots
 ```
 
-Indexes are maintained for workspace/board filtering, active canvas queries, starred/pinned/trash views, search, and storage dashboard scans.
+The Markdown files at the top level (`MILESTONES.md`, `PHASE-1A-*.md`, …) are
+the planning record of v1.
 
-## Performance Notes
+## Data
 
-The UI keeps the app responsive by:
+Everything is stored in Electron's user-data folder:
 
-- Loading bounded clip slices from SQLite
-- Rendering Canvas groups from the current workspace/filter slice
-- Limiting Timeline rendering to the newest visible entries
-- Keeping the minimap DOM lightweight
-- Avoiding expensive canvas redraw loops
+```text
+C:\Users\<you>\AppData\Roaming\clipcanvas\clipcanvas.db     the database
+C:\Users\<you>\AppData\Roaming\clipcanvas\storage\images\   captured images
+```
 
-The current target is smooth interaction with 10,000+ stored clips while showing a practical working slice in the UI.
+The tray menu's *Open storage folder* opens the second one.
 
-## Testing Checklist
-
-- Start the app after `npm install` and `npx electron-builder install-app-deps`.
-- Verify default workspaces appear: Personal, Research, College.
-- Create a custom workspace and confirm new clips can be captured there.
-- Verify Research boards appear: MongoDB, React, APIs.
-- Verify College boards appear: Final Year Project, Internship, Viva.
-- Create, rename, and delete a board.
-- Drag a clip onto a board in the sidebar and confirm it moves.
-- Filter Canvas by board and confirm pinned clips remain visible.
-- Pin and unpin a clip.
-- Star a clip, then run archive actions and confirm starred clips are not archived.
-- Archive and restore a clip.
-- Delete a clip, confirm it moves to Trash, then restore it.
-- Empty Trash and confirm trashed clips are permanently removed.
-- Search in Recall with and without archive included.
-- Open Settings and verify storage totals, largest clips, and oldest clips.
-- Use zoom controls and confirm the minimap viewport updates.
-- Click the minimap and confirm Canvas navigation changes.
+- `created_at` is Unix **seconds**. Each clip also stores `year`, `month`,
+  `day`, `weekday` and `hour`, which the time queries group by.
+- Tables: `workspaces`, `boards`, `clips`, and `clips_fts`, an external-content
+  FTS5 index maintained by triggers.
+- Migrations are additive — `CREATE TABLE IF NOT EXISTS` and guarded
+  `ALTER TABLE … ADD COLUMN` — so an existing install upgrades in place.
 
 ## Troubleshooting
 
