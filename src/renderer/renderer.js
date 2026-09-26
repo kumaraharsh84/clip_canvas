@@ -24,7 +24,7 @@
   const $ = (id) => document.getElementById(id);
   const el = {
     workspace: $("workspace"), board: $("board"), filter: $("filter"),
-    search: $("search"), fit: $("fit"), reload: $("reload"), status: $("status"),
+    search: $("search"), today: $("today"), fit: $("fit"), reload: $("reload"), status: $("status"),
     stage: $("time-container"), hud: $("hud"), details: $("details"),
     results: $("results"), empty: $("empty"), legend: $("legend"), timeline: $("timeline"),
     infoPath: $("info-path"), infoTitle: $("info-title"),
@@ -353,6 +353,7 @@
     el.filter.addEventListener("change", resource);
     el.reload.addEventListener("click", resource);
     el.fit.addEventListener("click", () => tc.fitAll(true));
+    el.today.addEventListener("click", () => tc.showToday(true));
 
     el.search.addEventListener("input", searchSoon);
     el.search.addEventListener("keydown", (e) => {
