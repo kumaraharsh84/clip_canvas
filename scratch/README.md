@@ -2,6 +2,13 @@
 
 Checks, benchmarks and diagnostics. Nothing here ships in the app.
 
+```text
+scratch/
+  verify-*.js, capture-demo.js   the current checks (below)
+  diagnostics/                   standalone clipboard and search experiments
+  archive/v1/                    v1 harnesses and benchmark results, for the record
+```
+
 ## Current checks
 
 These run against the code in `src/` as it is now.
@@ -25,31 +32,35 @@ npm run screenshots               # rewrite docs/*.png
 and `shots/` are git-ignored for that reason; keep those images out of the
 repository.
 
-## Diagnostics
+## diagnostics/
 
 Standalone: they do not load anything from `src/`.
 
 | Script | What it does |
 | --- | --- |
 | `check_clipboard.js`, `read_clipboard_formats.js` | Print the formats currently on the clipboard |
-| `test_clipboard_files.js` | Experiments in reading the paths of files copied in Explorer |
+| `test_clipboard_files.js` | Experiments in reading the paths of files copied in Explorer — the starting point for capturing copied files |
 | `benchmark-search.js` | Times `LIKE` against FTS5 search on a throwaway database |
+
+```bash
+npx electron scratch/diagnostics/read_clipboard_formats.js
+```
 
 `better-sqlite3` is built for Electron's Node, so run the benchmark under
 Electron rather than plain Node:
 
 ```bash
-ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scratch/benchmark-search.js
+ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scratch/diagnostics/benchmark-search.js
 ```
 
-## From v1
+## archive/v1/
 
 The v1 source was lost, and `src/` is a rewrite. These scripts were written
 against v1: they call its module API (`insertClip`, `trashClip`,
 `getDefaultWorkspaceId`, and `src/main/clipboard.js`, `settings.js` and
 `storage/storageService.js`, which no longer exist), and the renderer
 harnesses probe the DOM of the old renderer. They do not run against the
-current code without updating; they are kept for the record.
+current code; the usage lines inside them still give their old paths.
 
 | Script | What it did |
 | --- | --- |
@@ -58,12 +69,12 @@ current code without updating; they are kept for the record.
 | `verify_storage_v2.js`, `verify_file_support.js`, `verify_stability.js`, `verify_content_projection.js` | Storage v2, file capture, stability and content projection |
 | `v1_audit.js` | End-to-end audit of the V1 feature list |
 
-### Benchmark results
+### results/
 
 | File | Run |
 | --- | --- |
-| `../benchmark_results.june-baseline.json` | The June baseline, before FTS5 search and the 200-result cap |
-| `../benchmark_results.json` | A 30 August run — the script's default output file |
+| `benchmark_results.june-baseline.json` | The June baseline, before FTS5 search and the 200-result cap |
+| `benchmark_results.json` | A 30 August run — the script's default output file |
 | `bench-smoketest.json`, `sweep-*.json` | 30 August: a smoke test, then a sweep from 250 to 2,000 clips |
 | `fixed-*.json`, `fixed2-*.json` | Later runs at the same sizes, as renderer fixes landed |
 | `ops-*.json`, `profile-1000.json`, `real-2000.json` | DOM operation counts and a per-function profile |
