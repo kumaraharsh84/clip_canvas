@@ -155,22 +155,27 @@ The tray menu's *Open storage folder* opens the second one.
 
 ## Troubleshooting
 
-### JavaScript error: `better_sqlite3.node` compiled against a different Node.js version
+### `better_sqlite3.node` was compiled against a different Node.js version
 
-Run:
+`better-sqlite3` is a native module, and it must match Electron's Node ABI, not
+your system Node's:
+
+```text
+The module better_sqlite3.node was compiled against a different Node.js version.
+NODE_MODULE_VERSION 137. This version of Node.js requires NODE_MODULE_VERSION 121.
+```
+
+Rebuild it for Electron:
 
 ```bash
 npx electron-builder install-app-deps
 npm start
 ```
 
-This rebuilds or downloads the Electron-compatible native binary.
+### `Cannot read properties of undefined (reading 'getPath')`
 
-### JavaScript error: `Cannot read properties of undefined (reading 'getPath')`
-
-This usually means `ELECTRON_RUN_AS_NODE=1` is set in the shell environment.
-
-Run:
+Electron is running as plain Node because `ELECTRON_RUN_AS_NODE=1` is set in
+the shell. Clear it and start again:
 
 ```powershell
 Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
@@ -186,7 +191,8 @@ npm install
 npx electron-builder install-app-deps
 ```
 
-If it still builds from source and fails, install Visual Studio Build Tools with the Desktop development with C++ workload and a Windows SDK, then retry.
+If it still builds from source and fails, install Visual Studio Build Tools with
+the Desktop development with C++ workload and a Windows SDK, then retry.
 
 ### Build fails: `Cannot create symbolic link ... libcrypto.dylib`
 
@@ -197,7 +203,7 @@ fails, and the build dies during `packaging`, before NSIS ever runs:
 
 ```text
 ERROR: Cannot create symbolic link : A required privilege is not held by the
-client. : ...\winCodeSign\<id>\darwin.12\lib\libcrypto.dylib
+client. : ...\winCodeSign\<id>\darwin.12\lib\libcrypto.dylib
 ```
 
 Nothing in a Windows build needs those `darwin/` files. The fix is to extract
@@ -215,19 +221,21 @@ The permanent alternative is to turn on **Settings → System → For developers
 Developer Mode**, which grants symlink privilege to non-admin users; then the
 normal download path works.
 
-### Panel does not appear
+### The window does not appear
 
-The app starts as a tray utility. Press `Ctrl+Shift+V`, or open it from the ClipCanvas icon in the Windows system tray.
+ClipCanvas starts as a tray utility. Press `Ctrl+Shift+V`, or open it from the
+ClipCanvas icon in the Windows system tray.
 
 ### Hotkey conflict
 
-Edit the hotkey registration in `src/main/main.js`.
+Change the `globalShortcut.register` call in `src/main/main.js`.
 
-## What's Coming In v3
+## Roadmap
 
-- AI auto-grouping with local embeddings
-- Semantic search, such as "that code from yesterday"
-- Source tracking for copied content
-- Drag-and-drop reordering on the canvas
-- File clip support
-- Optional cloud sync
+From [`planning/`](planning/):
+
+- Grouped view for busy hours: folders by kind inside an hour
+- Cleanup by hour, day, month and year, with starred and pinned clips protected
+- A small always-available capsule near the taskbar, with copy feedback
+- Search by date and kind: `today`, `last week`, `images june 2026`
+- File and PDF clips
