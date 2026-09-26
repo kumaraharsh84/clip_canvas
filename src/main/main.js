@@ -136,9 +136,9 @@ function createTray() {
 }
 
 /**
- * The packaged build references src/assets/icon.ico, which did not survive.
- * Rather than fail to create a tray at all -- which would leave the app with no
- * way to be opened, since the window starts hidden -- draw a placeholder.
+ * src/assets/icon.ico, then icon.png, then a drawn placeholder. The tray must
+ * always get an icon: the window starts hidden, so an app with no tray would
+ * have no way to be opened.
  */
 function trayIcon() {
   const icoPath = path.join(__dirname, "..", "assets", "icon.ico");
@@ -250,7 +250,7 @@ function captureImage(png, hash, size) {
   broadcast("clip:added", clip);
 }
 
-/** text | code | url -- the same three the canvas colours by. */
+/** Send an event to every open window. */
 function broadcast(channel, payload) {
   for (const w of BrowserWindow.getAllWindows()) {
     if (!w.isDestroyed()) w.webContents.send(channel, payload);
