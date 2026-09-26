@@ -25,7 +25,7 @@
   const el = {
     workspace: $("workspace"), board: $("board"), filter: $("filter"),
     search: $("search"), today: $("today"), fit: $("fit"), reload: $("reload"),
-    capture: $("capture"), status: $("status"),
+    capture: $("capture"), emptyTrash: $("empty-trash"), status: $("status"),
     stage: $("time-container"), hud: $("hud"), details: $("details"),
     results: $("results"), empty: $("empty"), legend: $("legend"), timeline: $("timeline"),
     infoPath: $("info-path"), infoTitle: $("info-title"),
@@ -33,7 +33,7 @@
     dType: $("d-type"), dWhen: $("d-when"), dTitle: $("d-title"),
     dBody: $("d-bodywrap"), dMeta: $("d-meta"), dClose: $("d-close"),
     dCopy: $("d-copy"), dStar: $("d-star"), dPin: $("d-pin"),
-    dArchive: $("d-archive"), dDelete: $("d-delete"),
+    dArchive: $("d-archive"), dDelete: $("d-delete"), dRestore: $("d-restore"),
   };
 
   let tc = null;
@@ -113,6 +113,7 @@
 
   /** Filters, workspace or board changed: same place in time, different clips. */
   async function resource() {
+    el.emptyTrash.hidden = el.filter.value !== "trash";
     deselect();
     status("loading…");
     await tc.setSource(makeSource(), { view: "keep" });
@@ -243,11 +244,15 @@
     el.dStar.classList.toggle("on", !!clip.is_starred);
     el.dPin.classList.toggle("on", !!clip.is_pinned);
     el.dArchive.classList.toggle("on", !!clip.is_archived);
+    const trashed = !!clip.deleted_at;
+    el.dDelete.hidden = trashed;
+    el.dRestore.hidden = !trashed;
 
     const bytes = clip.file_size_bytes || (clip.content ? clip.content.length : 0);
     el.dMeta.textContent =
       `#${clip.id} · ${fmtBytes(bytes)} · ${clip.source || "clipboard"}` +
-      (clip.tags && clip.tags.length ? " · " + clip.tags.join(", ") : "");
+      (clip.tags && clip.tags.length ? " · " + clip.tags.join(", ") : "") +
+      (trashed ? " · in Trash" : "");
 
     if (clip.type === "image" && clip.asset_path) {
       const img = document.createElement("img");
@@ -382,6 +387,8 @@
     });
     api.on("capture:changed", (s) => setPausedUi(!!(s && s.paused)));
 
+    el.emptyTrash.addEventListener("click", emptyTrash);
+
     el.search.addEventListener("input", searchSoon);
     el.search.addEventListener("keydown", (e) => {
       if (e.key === "ArrowDown") { e.preventDefault(); moveHit(1); }
@@ -417,6 +424,13 @@
       refreshSoon();
     });
 
+    el.dRestore.addEventListener("click", async () => {
+      if (!selected) return;
+      await api.clips.restore([selected.id]);
+      deselect();
+      refreshSoon();
+    });
+
     // A new capture lands on today. Only today's cell is refetched.
     api.on("clip:added", refreshSoon);
 
@@ -438,6 +452,20 @@
       }
       if (!typing && e.key === "/") { e.preventDefault(); el.search.focus(); el.search.select(); }
     });
+  }
+
+  async function emptyTrash() {
+    const opts = { workspaceId: Number(el.workspace.value) || undefined };
+    const t = await api.clips.trashSummary(opts);
+    if (!t || !t.count) { flash(el.emptyTrash, "Trash is empty"); return; }
+    const ok = window.confirm(
+      `Permanently delete ${t.count.toLocaleString()} ${t.count === 1 ? "clip" : "clips"} ` +
+      `(${fmtBytes(t.bytes)}) from Trash?\n\nThis cannot be undone.`
+    );
+    if (!ok) return;
+    await api.clips.emptyTrash(opts);
+    deselect();
+    await tc.refresh();
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
