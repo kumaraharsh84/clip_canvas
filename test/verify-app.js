@@ -485,6 +485,18 @@ app.whenReady().then(async () => {
     ok("probe", false, err.message);
   }
 
+  // The watcher needs Electron's synchronous clipboard API, which Electron 44
+  // replaced. This is the check that fails if an upgrade takes it away.
+  console.log("\n-- this Electron's clipboard --");
+  {
+    const { clipboard } = require("electron");
+    const { ClipboardWatcher } = require("../src/main/clipwatch");
+    let err = null;
+    try { new ClipboardWatcher({ clipboard, onText() {}, onImage() {}, sequence: null }); } catch (e) { err = e; }
+    ok("the clipboard watcher can run on Electron " + process.versions.electron, !err, err ? err.message : "");
+    ok("readText answers synchronously", typeof clipboard.readText() === "string");
+  }
+
   console.log("\n-- renderer console --");
   ok("no console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
 

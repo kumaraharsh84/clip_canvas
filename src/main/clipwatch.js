@@ -38,6 +38,12 @@ const log = require("./log");
 const IGNORE_FORMATS = ["ExcludeClipboardContentFromMonitorProcessing", "Clipboard Viewer Ignore"];
 const HISTORY_FORMAT = "CanIncludeInClipboardHistory";
 const IMAGE_FALLBACK_MS = 3000;
+// The synchronous clipboard API this file is written against. Electron 44
+// replaced it with an async, W3C-style one: readText returns a Promise, and
+// readImage, availableFormats and readBuffer are gone. On it every poll would
+// "capture" a Promise, so the watcher refuses to start instead (see
+// assertSyncClipboard). Porting to the async API is a planned task.
+const SYNC_API = ["readText", "readImage", "availableFormats", "has", "readBuffer"];
 const FAIL_ALERT = 5;   // failed polls in a row before capture counts as broken (~3.5 s)
 const LOG_EVERY = 100;  // while failing, log every Nth failure, not every one
 
@@ -53,6 +59,15 @@ function loadSequenceNumber() {
   } catch (err) {
     log.warn("clipboard sequence number unavailable, polling instead:", err.message);
     return null;
+  }
+}
+
+/** Throws, naming what is missing, if `clipboard` is not the synchronous API. */
+function assertSyncClipboard(clipboard) {
+  const missing = SYNC_API.filter((k) => typeof clipboard[k] !== "function");
+  if (missing.length) {
+    throw new Error(`this Electron's clipboard has no ${missing.join(", ")}: ` +
+      "clipwatch.js needs porting to the async clipboard API (Electron 44+)");
   }
 }
 
@@ -84,6 +99,7 @@ class ClipboardWatcher {
    * @param {number}   [o.intervalMs]
    */
   constructor({ clipboard, onText, onImage, onHealth = null, intervalMs = 700, sequence = loadSequenceNumber() }) {
+    assertSyncClipboard(clipboard);
     this.cb = clipboard;
     this.onText = onText;
     this.onImage = onImage;
@@ -209,6 +225,6 @@ class ClipboardWatcher {
 }
 
 module.exports = {
-  ClipboardWatcher, isPrivate, imageHash, loadSequenceNumber,
+  ClipboardWatcher, isPrivate, imageHash, loadSequenceNumber, assertSyncClipboard,
   IGNORE_FORMATS, HISTORY_FORMAT, FAIL_ALERT,
 };

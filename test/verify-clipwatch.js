@@ -143,6 +143,17 @@ console.log("\n-- when reading fails --");
   ok("the copy made then is captured", got.text[got.text.length - 1] === "after recovery");
 }
 
+console.log("\n-- on a clipboard API it does not know --");
+{
+  // What Electron 44's async clipboard looks like to this file.
+  const asyncClipboard = { readText: async () => "", has: async () => false, clear() {}, write: async () => {} };
+  let threw = null;
+  try { new ClipboardWatcher({ clipboard: asyncClipboard, onText() {}, onImage() {}, sequence: null }); }
+  catch (err) { threw = err; }
+  ok("the watcher refuses to start, naming what is missing",
+     !!threw && /readImage/.test(threw.message) && /async clipboard/.test(threw.message), threw && threw.message);
+}
+
 console.log("\n-- without the sequence number --");
 {
   const cb = fakeClipboard();

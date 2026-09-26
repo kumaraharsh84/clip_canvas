@@ -246,7 +246,21 @@ function togglePanel() {
 
 // ── Clipboard watcher ────────────────────────────────────────────────────────
 function startClipboardWatcher() {
-  watcher = new ClipboardWatcher({
+  try {
+    watcher = createWatcher();
+  } catch (err) {
+    // The app still opens -- history stays browsable -- but says capture is down.
+    log.error("clipboard watcher cannot start:", err);
+    captureError = true;
+    updateTray();
+    return;
+  }
+  watcher.setPaused(!!settings.get("capturePaused"));
+  watcher.start();
+}
+
+function createWatcher() {
+  return new ClipboardWatcher({
     clipboard,
     intervalMs: POLL_MS,
     onText: captureText,
@@ -260,8 +274,6 @@ function startClipboardWatcher() {
       broadcast("capture:changed", captureState());
     },
   });
-  watcher.setPaused(!!settings.get("capturePaused"));
-  watcher.start();
 }
 
 function captureText(text) {
