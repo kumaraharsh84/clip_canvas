@@ -30,6 +30,9 @@ jobs:
       - name: Image protocol stays inside storage
         run: node test/verify-asset-protocol.js
 
+      - name: Shortcut rules
+        run: node test/verify-hotkey.js
+
       - name: Time canvas layout invariants
         run: node test/verify-timecanvas-2d.js --clips=20000
 
