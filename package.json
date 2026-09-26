@@ -37,13 +37,13 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "^13.0.3",
     "koffi": "^3.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "electron": "^29.4.6",
-    "electron-builder": "^24.9.1",
+    "electron": "^43.7.5",
+    "electron-builder": "^26.15.3",
     "eslint": "^10.11.0",
     "globals": "^17.12.0"
   },

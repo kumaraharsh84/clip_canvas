@@ -355,8 +355,12 @@ app.whenReady().then(async () => {
   });
 
   const errors = [];
-  win.webContents.on("console-message", (_e, level, message) => {
-    if (level >= 2) errors.push(message);
+  // Warnings and errors. Electron 35+ puts level ("warning"/"error") and
+  // message on the event; older versions passed them as arguments (2 / 3).
+  win.webContents.on("console-message", (e, ...old) => {
+    const level = e.level !== undefined ? e.level : old[0];
+    const message = e.message !== undefined ? e.message : old[1];
+    if (level === "warning" || level === "error" || level >= 2) errors.push(message);
   });
   win.webContents.on("preload-error", (_e, p, err) => errors.push("preload: " + err.message));
 

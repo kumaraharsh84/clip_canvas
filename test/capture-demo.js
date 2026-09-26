@@ -119,8 +119,11 @@ app.whenReady().then(async () => {
     webPreferences: { offscreen: true, backgroundThrottling: false },
   });
   const errors = [];
-  win.webContents.on("console-message", (_e, level, message) => {
-    if (level >= 3) errors.push(message);
+  // Errors only. Electron 35+ puts level and message on the event.
+  win.webContents.on("console-message", (e, ...old) => {
+    const level = e.level !== undefined ? e.level : old[0];
+    const message = e.message !== undefined ? e.message : old[1];
+    if (level === "error" || level === 3) errors.push(message);
   });
 
   await win.loadFile(path.join(__dirname, "..", "demo", "index.html"));
