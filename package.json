@@ -1,7 +1,26 @@
 {
   "name": "clipcanvas",
   "version": "2.0.0",
-  "description": "Floating clipboard manager with canvas UI",
+  "private": true,
+  "description": "Your whole clipboard history on one zoomable calendar canvas, for Windows",
+  "keywords": [
+    "clipboard",
+    "clipboard-manager",
+    "clipboard-history",
+    "electron",
+    "canvas",
+    "timeline",
+    "windows"
+  ],
+  "homepage": "https://github.com/kumaraharsh84/clip_canvas#readme",
+  "bugs": {
+    "url": "https://github.com/kumaraharsh84/clip_canvas/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kumaraharsh84/clip_canvas.git"
+  },
+  "license": "UNLICENSED",
   "author": "kumar",
   "main": "src/main/main.js",
   "scripts": {
@@ -34,7 +53,11 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    }
-  },
-  "license": "UNLICENSED"
+    },
+    "copyright": "Copyright © 2026 kumar",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ]
+  }
 }
