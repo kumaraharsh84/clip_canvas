@@ -81,8 +81,12 @@ function start() {
   // the tray checkbox decides. Re-registered on every launch so the entry
   // follows the app if its folder moves -- the old Startup-folder .vbs
   // hard-coded a path, and silently stopped working when the project moved.
-  if (settings.get("autoStart") === undefined && !IS_DEV) settings.set("autoStart", true);
-  applyAutoStart(!!settings.get("autoStart"));
+  // A dev run (npm run dev) leaves the entry alone either way: it used to
+  // apply "off" (no setting yet) and delete the entry a normal run had made.
+  if (!IS_DEV) {
+    if (settings.get("autoStart") === undefined) settings.set("autoStart", true);
+    applyAutoStart(!!settings.get("autoStart"));
+  }
 
   const ws = db.listWorkspaces();
   activeWorkspaceId = (ws.find((w) => w.is_default) || ws[0] || {}).id || null;
