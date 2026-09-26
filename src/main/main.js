@@ -9,7 +9,8 @@
 //   - every IPC handler answers { success, data } / { success, error }
 //
 // The clipboard watcher (clipwatch.js) polls Windows' clipboard sequence
-// number and reads the clipboard only when it changes.
+// number and reads the clipboard only when it changes, and skips copies that
+// password managers mark as private.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const {

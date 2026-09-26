@@ -1,5 +1,5 @@
 // ─── src/main/clipwatch.js ───────────────────────────────────────────────────
-// Notices new clipboard contents.
+// Notices new clipboard contents, and skips the ones that ask not to be kept.
 //
 // WHY A SEQUENCE NUMBER
 // Electron has no clipboard-change event, so this polls. Polling by reading
@@ -15,10 +15,20 @@
 // rebuilding for each Electron version. Without it (not Windows, or koffi
 // failed to load) the watcher falls back to reading, and reads images only
 // every IMAGE_FALLBACK_MS.
+//
+// WHAT IS NEVER CAPTURED
+// ClipCanvas keeps everything, forever. Password managers and other apps mark
+// secrets so clipboard tools skip them, and this honours those marks:
+//   ExcludeClipboardContentFromMonitorProcessing   any data: do not look at it
+//   Clipboard Viewer Ignore                        older convention, same meaning
+//   CanIncludeInClipboardHistory = 0 (a DWORD)     keep it out of history
+// These are the formats Windows' own clipboard history respects.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const crypto = require("crypto");
 
+const IGNORE_FORMATS = ["ExcludeClipboardContentFromMonitorProcessing", "Clipboard Viewer Ignore"];
+const HISTORY_FORMAT = "CanIncludeInClipboardHistory";
 const IMAGE_FALLBACK_MS = 3000;
 
 /** GetClipboardSequenceNumber, or null where it cannot be had. */
@@ -33,6 +43,17 @@ function loadSequenceNumber() {
   } catch (err) {
     console.warn("[clipcanvas] clipboard sequence number unavailable, polling instead:", err.message);
     return null;
+  }
+}
+
+/** Has whatever is on the clipboard asked not to be recorded? */
+function isPrivate(clipboard) {
+  try {
+    for (const f of IGNORE_FORMATS) if (clipboard.has(f)) return true;
+    const h = clipboard.readBuffer(HISTORY_FORMAT);
+    return h.length >= 4 && h.readUInt32LE(0) === 0;
+  } catch (_) {
+    return false;
   }
 }
 
@@ -93,6 +114,7 @@ class ClipboardWatcher {
   /** Remember the clipboard as it is now, without capturing it. */
   prime() {
     if (this.seq) this.lastSeq = this.seq();
+    if (isPrivate(this.cb)) return; // never hold a secret, not even to compare
     this.lastText = this.cb.readText() || null;
     const img = this.hasImage() ? this.cb.readImage() : null;
     this.lastImageHash = img && !img.isEmpty() ? imageHash(img) : null;
@@ -115,6 +137,8 @@ class ClipboardWatcher {
         imageDue = now - this.lastImageCheck >= IMAGE_FALLBACK_MS;
         if (imageDue) this.lastImageCheck = now;
       }
+
+      if (isPrivate(this.cb)) return;
 
       // Images first: copying an image often leaves a text representation too
       // (a filename, or HTML), and capturing that instead loses the picture.
@@ -144,4 +168,4 @@ class ClipboardWatcher {
   }
 }
 
-module.exports = { ClipboardWatcher, imageHash, loadSequenceNumber };
+module.exports = { ClipboardWatcher, isPrivate, imageHash, loadSequenceNumber, IGNORE_FORMATS, HISTORY_FORMAT };
