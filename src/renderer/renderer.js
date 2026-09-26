@@ -41,6 +41,10 @@
   let refreshTimer = null;
   let infoRaf = null;
   let hovered = null;
+  let searchTimer = null;
+  let searchSeq = 0;
+  let hits = [];
+  let activeHit = -1;
 
   init().catch(fatal);
 
@@ -254,25 +258,41 @@
   }
 
   // ── Search ─────────────────────────────────────────────────────────────────
+  // Runs as you type (fts5 prefix-matches the last word, see db.ftsQuery).
+  // Enter opens the highlighted result; arrows move the highlight.
+  function searchSoon() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(runSearch, 140);
+  }
+
   async function runSearch() {
     const q = el.search.value.trim();
-    if (!q) { el.results.hidden = true; return; }
+    const seq = ++searchSeq;
+    if (!q) { closeResults(); return; }
 
-    const hits = await api.clips.search({
-      query: q,
-      workspaceId: Number(el.workspace.value) || undefined,
-      boardId: Number(el.board.value) || undefined,
-      includeArchived: true,
-    });
+    let found;
+    try {
+      found = await api.clips.search({
+        query: q,
+        workspaceId: Number(el.workspace.value) || undefined,
+        boardId: Number(el.board.value) || undefined,
+        includeArchived: true,
+      });
+    } catch (err) {
+      found = [];
+      console.error(err);
+    }
+    if (seq !== searchSeq) return; // a newer keystroke already answered
 
+    hits = found;
+    activeHit = hits.length ? 0 : -1;
     el.results.hidden = false;
     if (!hits.length) {
-      el.results.innerHTML = '<div class="result"><div class="r-body">No matches</div></div>';
+      el.results.innerHTML = '<div class="result none"><div class="r-body">No matches</div></div>';
       return;
     }
-
     el.results.innerHTML = hits.map((c, i) => `
-      <button class="result" data-i="${i}">
+      <button class="result${i === 0 ? " active" : ""}" data-i="${i}" tabindex="-1">
         <div class="r-head">
           <span class="pill">${esc(c.type)}</span>
           ${c.is_archived ? '<span class="pill">archived</span>' : ""}
@@ -280,18 +300,24 @@
         </div>
         <div class="r-body">${esc(oneLine(c))}</div>
       </button>`).join("");
-
     for (const btn of el.results.querySelectorAll(".result[data-i]")) {
-      btn.addEventListener("click", () => openHit(hits[Number(btn.dataset.i)]));
+      btn.addEventListener("click", () => openHit(Number(btn.dataset.i)));
     }
   }
 
-  /**
-   * Fly to a search hit. Its day may not be loaded -- reveal() loads it -- and
-   * the current filter may hide it, in which case the filter widens to All.
-   */
-  async function openHit(hit) {
-    el.results.hidden = true;
+  function moveHit(delta) {
+    if (!hits.length) return;
+    activeHit = (activeHit + delta + hits.length) % hits.length;
+    const btns = el.results.querySelectorAll(".result[data-i]");
+    btns.forEach((b, i) => b.classList.toggle("active", i === activeHit));
+    if (btns[activeHit]) btns[activeHit].scrollIntoView({ block: "nearest" });
+  }
+
+  /** Fly to a search hit -- loading its day, and widening the filter if it hides it. */
+  async function openHit(i) {
+    const hit = hits[i];
+    if (!hit) return;
+    closeResults();
     if (!matchesFilter(hit, el.filter.value)) {
       el.filter.value = "all";
       await resource();
@@ -310,6 +336,12 @@
     }
   }
 
+  function closeResults() {
+    el.results.hidden = true;
+    hits = [];
+    activeHit = -1;
+  }
+
   // ── Events ─────────────────────────────────────────────────────────────────
   function wireEvents() {
     el.workspace.addEventListener("change", async () => {
@@ -322,12 +354,20 @@
     el.reload.addEventListener("click", resource);
     el.fit.addEventListener("click", () => tc.fitAll(true));
 
+    el.search.addEventListener("input", searchSoon);
     el.search.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") runSearch();
-      if (e.key === "Escape") { el.search.value = ""; el.results.hidden = true; el.search.blur(); }
-    });
-    el.search.addEventListener("input", () => {
-      if (!el.search.value.trim()) el.results.hidden = true;
+      if (e.key === "ArrowDown") { e.preventDefault(); moveHit(1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); moveHit(-1); }
+      else if (e.key === "Enter") {
+        e.preventDefault();
+        clearTimeout(searchTimer);
+        if (hits.length) openHit(Math.max(0, activeHit));
+        else runSearch();
+      } else if (e.key === "Escape") {
+        el.search.value = "";
+        closeResults();
+        el.search.blur();
+      }
     });
 
     el.dClose.addEventListener("click", deselect);
@@ -363,7 +403,7 @@
     document.addEventListener("keydown", (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
       if (e.key === "Escape") {
-        if (!el.results.hidden) { el.results.hidden = true; return; }
+        if (!el.results.hidden) { closeResults(); return; }
         if (!el.details.hidden) { deselect(); return; }
         if (!typing) api.window.hide();
         return;

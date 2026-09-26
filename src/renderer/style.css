@@ -283,7 +283,9 @@ button.on { border-color: var(--ok); color: var(--ok); }
   padding: 7px 10px;
 }
 
-.result:hover { background: #1a222c; }
+.result:hover, .result.active { background: #1a222c; }
+.result.active { box-shadow: inset 2px 0 0 var(--accent); }
+.result.none { cursor: default; }
 .result .r-head { display: flex; gap: 7px; align-items: center; margin-bottom: 2px; }
 .result .r-when { color: var(--dim); font: 10px var(--mono); margin-left: auto; }
 .result .r-body {
