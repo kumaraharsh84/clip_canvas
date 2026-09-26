@@ -59,6 +59,32 @@ Three rules keep its boxes a readable shape:
 **Every clip is readable, not just present.** The viewport's maximum zoom is
 set from the smallest text on the canvas, so any clip can be zoomed to ≥ 7 px.
 
+## What kind of clip it is
+
+The type stored at capture time was unreliable. In real history, 81 of the 245
+clips stored as "code" were chats, prompts, plans and reports — and ~37 more
+were terminal sessions filed as Other code, JSON or SQL. `classify.js` decides
+in this order:
+
+1. **Terminal session → Shell** if it *starts* at a prompt or command, is
+   command output shaped like a table, or ≥30% of its lines are prompts,
+   commands or command output. Per line, never "anywhere": a chat that quotes
+   one command is still a chat.
+2. **JSON / key-value config** — recognised by structure, so certain.
+3. **Prose → Text**, judged by shape, not vocabulary, so Hinglish counts
+   (few code symbols, mostly plain words, sentence-length lines). Markdown
+   tables and `=====` dividers are layout, not symbols. Never applied to a clip
+   that starts like a source file (`import`, `def`, `const`…) or is shaped like
+   SQL — SQL is English words with few symbols.
+4. **Otherwise, the language** (JavaScript, Python, SQL, HTML, CSS, …).
+
+The capture side (`src/main/classifyText.js`) uses the same detectors, so what
+is stored and what is shown agree. `node scratch/verify-classify.js` checks both
+against synthetic examples of every case above.
+
+Known gap: nested YAML (`services:` → `web:` → `image: nginx`) is not recognised
+as config; it shows as Other code, as it always did.
+
 ## Controls
 
 | | |
