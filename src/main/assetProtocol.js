@@ -37,13 +37,17 @@ function registerAssetScheme(protocol) {
 const CORS = { "access-control-allow-origin": "*" };
 
 function handleAssetProtocol(protocol, storageDir) {
-  const root = path.normalize(storageDir);
+  const root = path.resolve(storageDir);
   protocol.handle(ASSET_SCHEME, (request) => {
     const url = new URL(request.url);
     const rel = decodeURIComponent(url.hostname + url.pathname).replace(/^\/+/, "");
-    const full = path.normalize(path.join(root, rel));
+    const full = path.resolve(root, rel);
 
-    if (!full.startsWith(root)) {
+    // Inside root means a relative path that does not climb out. A prefix test
+    // (full.startsWith(root)) also let through a SIBLING folder whose name
+    // starts the same way: storage-old/ next to storage/.
+    const inside = path.relative(root, full);
+    if (!inside || inside.startsWith("..") || path.isAbsolute(inside)) {
       return new Response("forbidden", { status: 403, headers: CORS });
     }
     try {

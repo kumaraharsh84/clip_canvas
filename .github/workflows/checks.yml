@@ -27,6 +27,9 @@ jobs:
       - name: Clipboard watcher
         run: node test/verify-clipwatch.js
 
+      - name: Image protocol stays inside storage
+        run: node test/verify-asset-protocol.js
+
       - name: Time canvas layout invariants
         run: node test/verify-timecanvas-2d.js --clips=20000
 
