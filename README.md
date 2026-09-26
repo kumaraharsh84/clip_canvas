@@ -1,6 +1,34 @@
-# ClipCanvas v2
+# ClipCanvas
 
-Floating clipboard manager for Windows with an AutoCAD-style dark UI, canvas view, timeline view, recall/search view, and local SQLite storage.
+**Your whole clipboard history, on one zoomable timeline.**
+
+ClipCanvas keeps everything you copy on Windows — text, code, links and images —
+and lays it out as one canvas. Years hold months, months hold days, days hold
+hours, and each hour holds the clips you copied in it, in the order you copied
+them. You don't open folders; you zoom in.
+
+![Two and a half months of clips, coloured by kind](docs/overview.png)
+
+- **In the order you copied.** An image copied between two text clips sits
+  between them. Nothing is filed away by type.
+- **The whole clip.** Every card holds its complete text, never a two-line
+  preview. Long clips are small until you zoom in, and then every line is
+  readable.
+- **When, on every card.** Each clip shows the time you copied it.
+- **Colour says what it is.** Prose, short snippets, links and images each have
+  a colour, and so does code in each language: JavaScript, Python, SQL, HTML,
+  CSS, JSON / config and shell.
+- **Local.** One SQLite file and a folder of images on your own machine. Nothing
+  is uploaded.
+
+![One hour: every card is the complete clip, with the time it was copied](docs/hour.png)
+
+| A day | One clip, up close |
+| --- | --- |
+| ![A day of clips, grouped by hour](docs/day.png) | ![A single HTML clip, syntax-coloured](docs/clip.png) |
+
+<sub>Screenshots are from the demo page (`npm run demo`), which generates
+synthetic clips.</sub>
 
 ## Quick Start
 
