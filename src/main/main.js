@@ -8,11 +8,8 @@
 //   - closing the window hides it, it never quits the app
 //   - every IPC handler answers { success, data } / { success, error }
 //
-// The clipboard watcher polls. Electron exposes no clipboard-change event on
-// Windows, and the alternatives (a native clipboard-listener addon, or a
-// hidden window subscribing to WM_CLIPBOARDUPDATE) both mean another native
-// dependency to rebuild against every Electron bump -- which is exactly the
-// class of breakage this project has already lost a day to.
+// The clipboard watcher (clipwatch.js) polls Windows' clipboard sequence
+// number and reads the clipboard only when it changes.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const {
@@ -27,6 +24,7 @@ const { ClipDatabase } = require("./db");
 const { registerAssetScheme, handleAssetProtocol } = require("./assetProtocol");
 // Stored type of a captured clip -- shares its rules with what the canvas shows.
 const { classify } = require("./classifyText");
+const { ClipboardWatcher } = require("./clipwatch");
 
 const IS_DEV = process.argv.includes("--dev");
 const POLL_MS = 700;
@@ -35,12 +33,8 @@ let win = null;
 let tray = null;
 let db = null;
 let storageDir = null;
-let pollTimer = null;
+let watcher = null;
 let activeWorkspaceId = null;
-
-// Last seen clipboard state, so a poll that finds nothing new does nothing.
-let lastText = null;
-let lastImageHash = null;
 
 // A custom scheme must be registered as privileged BEFORE app ready. The
 // handler lives in assetProtocol.js so scratch/verify-app.js tests this exact
@@ -86,7 +80,7 @@ app.on("window-all-closed", (e) => {
 
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
-  if (pollTimer) clearInterval(pollTimer);
+  if (watcher) watcher.stop();
   if (db) db.close();
 });
 
@@ -173,40 +167,14 @@ function togglePanel() {
 
 // ── Clipboard watcher ────────────────────────────────────────────────────────
 function startClipboardWatcher() {
-  // Prime from the current clipboard so whatever is already on it at launch is
-  // not captured as if it were just copied.
-  lastText = clipboard.readText() || null;
-  const img = clipboard.readImage();
-  lastImageHash = img.isEmpty() ? null : hashBuffer(img.toPNG());
-
-  pollTimer = setInterval(pollClipboard, POLL_MS);
-}
-
-function pollClipboard() {
-  try {
-    // Images first: copying an image often leaves a text representation too
-    // (a filename, or HTML), and capturing that instead loses the picture.
-    const img = clipboard.readImage();
-    if (!img.isEmpty()) {
-      const png = img.toPNG();
-      const hash = hashBuffer(png);
-      if (hash !== lastImageHash) {
-        lastImageHash = hash;
-        lastText = clipboard.readText() || lastText;
-        captureImage(png, hash, img.getSize());
-      }
-      return;
-    }
-
-    const text = clipboard.readText();
-    if (text && text !== lastText) {
-      lastText = text;
-      lastImageHash = null;
-      captureText(text);
-    }
-  } catch (err) {
-    console.error("[clipcanvas] clipboard poll failed:", err.message);
-  }
+  watcher = new ClipboardWatcher({
+    clipboard,
+    intervalMs: POLL_MS,
+    onText: captureText,
+    // PNG is encoded only here, once per captured image -- never to check.
+    onImage: (img, hash) => captureImage(img.toPNG(), hash, img.getSize()),
+  });
+  watcher.start();
 }
 
 function captureText(text) {
@@ -305,9 +273,8 @@ function registerIpc() {
   handle("clips:forDays", (opts = {}) => db.getClipsForDays(withWorkspace(opts)));
 
   /**
-   * Put a clip back on the clipboard. lastText/lastImageHash are updated first
-   * so the watcher does not immediately re-capture what we just wrote and
-   * duplicate the clip on every copy-back.
+   * Put a clip back on the clipboard, then tell the watcher, so it does not
+   * re-capture what we just wrote and duplicate the clip on every copy-back.
    */
   handle("clips:copyBack", (id) => {
     const clip = db.getClipById(id);
@@ -316,12 +283,11 @@ function registerIpc() {
     if (clip.type === "image" && clip.asset_path) {
       const img = nativeImage.createFromPath(path.join(storageDir, clip.asset_path));
       if (img.isEmpty()) throw new Error("image asset missing");
-      lastImageHash = hashBuffer(img.toPNG());
       clipboard.writeImage(img);
     } else {
-      lastText = clip.content || "";
-      clipboard.writeText(lastText);
+      clipboard.writeText(clip.content || "");
     }
+    if (watcher) watcher.noteOwnWrite();
     return { ok: true, id };
   });
 
@@ -351,6 +317,5 @@ function withWorkspace(opts) {
   return { ...opts, workspaceId: opts.workspaceId || activeWorkspaceId };
 }
 function toArray(v) { return Array.isArray(v) ? v : [v]; }
-function hashBuffer(buf) { return crypto.createHash("sha1").update(buf).digest("hex"); }
 
 module.exports = { classify };
