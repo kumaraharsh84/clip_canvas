@@ -1,9 +1,12 @@
 # Time Canvas (canvas-2D)
 
-Everything you have copied, as one continuous zoomable timeline:
+Everything you have copied, on one zoomable calendar:
 **Year → Month → Day → Hour → Clip**, nested as boxes inside boxes the way a
 code-city visualiser nests directories and files. You don't navigate into a
 level, you fly into it.
+
+- Years, months and days are a **fixed calendar**: a day's place comes from its
+  date alone, so nothing ever moves when you copy something new.
 
 - Clips appear **in the order you copied them** — a screenshot taken between two
   text clips sits between them, not filed away with the other images.
@@ -16,7 +19,8 @@ level, you fly into it.
 
 | File | Role |
 | --- | --- |
-| `layout.js` | Tree building, card sizing, order-preserving strip layout |
+| `calendar.js` | Where every year, month and day sits; per-day counts and heat colours |
+| `layout.js` | One day's hours and cards: card sizing, order-preserving strip layout |
 | `textlayout.js` | Wrapping, line counting, column flow, per-card font fitting |
 | `classify.js` | Category detection (incl. code language) and palettes |
 | `tokens.js` | Splits lines into coloured runs — the line texture |
@@ -24,11 +28,40 @@ level, you fly into it.
 | `texturecache.js` | Pre-painted card textures for the zoomed-out mosaic |
 | `imagecache.js` | Off-thread thumbnail decode, byte-budgeted LRU |
 | `controls.js` | Smooth zoom, drag inertia, fly in/out, hover, keys |
-| `timelinestrip.js` | The calendar strip under the canvas |
+| `timelinestrip.js` | The day-by-day strip under the canvas |
 | `describe.js` | Plain-data description of a node for the info panel |
 | `viewport.js` · `lod.js` · `lru.js` | Transform, level names, caches |
-| `index.js` | `mountTimeCanvas()` + the dirty-driven frame loop |
+| `index.js` | `mountTimeCanvas()`, the dirty-driven frame loop, loading days as they come into view |
 | `build.js` | Bundles all of it into one browser-loadable file |
+
+## A calendar that never moves
+
+The first version laid out the whole history as one treemap, so every copy
+moved everything — measured on 5,000 clips, one new clip shifted all 5,000,
+some by 35 card widths. Now:
+
+- **Years** sit side by side, anchored at `(year − 2000)`, so a year's position
+  does not depend on which other years exist.
+- **Months** are a 4 × 3 grid inside their year; **days** a 7-column, 6-row
+  week grid inside their month (Sunday first).
+- **Inside a day**, and only there, the layout depends on the clips: hours,
+  then cards, in copy order (`layout.fillDay`).
+
+Because every day's place is known without its clips, the canvas loads like a
+map. `source.dayCounts()` — clips per day per category, for all of history —
+draws every day as a heat cell. When a cell is at least 26 px wide on screen,
+`source.forDays()` fetches its clips, nearest the centre first, one request at
+a time; past 40,000 loaded clips, days off screen are dropped. A day's `sig`
+(count, last copy, last edit or delete) tells the canvas which loaded days
+went stale after `refresh()` — in practice, only today.
+
+```js
+const tc = mountTimeCanvas(host, { onSelect, onHover, onFrame, resolveImage });
+await tc.setSource({ dayCounts: () => …, forDays: (days) => … }, { view: "today" });
+tc.refresh();          // after a capture or an edit
+await tc.reveal(clip); // load its day, fly to it, select it
+tc.setClips(rows);     // or an in-memory array (the demo)
+```
 
 ## How it gets the look
 
@@ -57,7 +90,8 @@ Three rules keep its boxes a readable shape:
 20–120 characters wide; the font shrinks rather than break those limits.
 
 **Every clip is readable, not just present.** The viewport's maximum zoom is
-set from the smallest text on the canvas, so any clip can be zoomed to ≥ 7 px.
+raised to fit the smallest text of any loaded day, so any clip can be zoomed to
+≥ 7 px.
 
 ## What kind of clip it is
 
@@ -95,6 +129,7 @@ as config; it shows as Other code, as it always did.
 | double-click | fly into the box under the cursor |
 | right-click / Backspace | fly back out one level |
 | F / Home | fit everything |
+| T | today |
 | + / − · arrows | zoom · pan |
 
 The timeline strip lights the days currently on screen; click a day to fly to it.
@@ -106,15 +141,19 @@ node scratch/verify-timecanvas-2d.js --clips=20000
 npx electron scratch/verify-app.js --perf --shots=out
 ```
 
-The first runs on plain Node: wrapping is exact and lossless, no boxes overlap,
+The first runs on plain Node: wrapping is exact and lossless; the calendar has
+every day in its weekday's column with nothing overlapping, and a day's place
+does not depend on which years are shown; inside every day no boxes overlap,
 clips are in copy order, and — for every card — the full text fits at its own
-font scale, columns have a readable shape, no card is a sliver, no card
-dominates, and the smallest text is reachable at max zoom. Measured at 20,000
-clips: 539 ms layout, worst card aspect 7.8:1, smallest text 12.9% at 8× zoom,
-largest card 0.13% of the canvas.
+font scale, columns have a readable shape, no card is a sliver or swallows its
+day, and the smallest text is reachable at max zoom. Then it adds a clip to the
+busiest day, lays out every day again, and checks that no card in any other day
+moved. Measured at 20,000 clips over 88 days: 669 ms to lay out every day,
+0 of 18,680 cards moved.
 
-The second drives the real app against a **copy** of your database, at three
-zoom levels, and writes screenshots. It renders offscreen, because a hidden
+The second drives the real app against a **copy** of your database: it opens
+on today, loads a year, adds a clip and checks nothing outside today moved,
+reveals a clip through search, and writes screenshots. It renders offscreen, because a hidden
 window stops producing frames and `capturePage` returns a stale one.
 
 ## Demo
@@ -139,5 +178,7 @@ node src/renderer/canvas/build.js demo/timecanvas.bundle.js
 - `created_at` is INTEGER Unix **seconds**; `layout.toDate` handles that.
 - Container keys are full paths (`root/y2026/m9/d5/h12`) so the current-hour
   marker lights exactly one hour, not the same hour on every day.
+- Card textures are keyed by `texKey`, which changes each time the card's day
+  is laid out again — a texture painted for a card's old shape is never reused.
 - The page CSP is `style-src 'self'`: set colours through `element.style`, never
   as `style="…"` in HTML strings, or they are silently dropped.

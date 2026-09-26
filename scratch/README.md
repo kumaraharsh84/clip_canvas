@@ -9,12 +9,14 @@ These run against the code in `src/` as it is now.
 | Script | Runs on | What it checks |
 | --- | --- | --- |
 | `verify-classify.js` | Node | Clip classification — prose, terminal sessions, code by language — and that the type stored at capture time agrees with what the canvas shows |
-| `verify-timecanvas-2d.js` | Node | Layout invariants on synthetic clips: wrapping is lossless, boxes never overlap, clips stay in copy order, every card's full text fits, no card is a sliver |
-| `verify-app.js` | Electron | The whole app — database, IPC, preload, renderer, canvas — against a **copy** of your database, at three zoom levels |
+| `verify-timecanvas-2d.js` | Node | Calendar and layout invariants on synthetic clips: every day in its weekday's column, wrapping is lossless, boxes never overlap, clips stay in copy order, every card's full text fits, and a new copy moves nothing outside its own day |
+| `verify-db.js` | Electron | The schema v6 migration, stored categories, and the per-day queries the canvas loads through; `--live` also migrates a copy of your database |
+| `verify-app.js` | Electron | The whole app — database, IPC, preload, renderer, canvas — against a **copy** of your database: opens on today, loads a year, a new copy moves nothing else, search reveals a clip |
 | `capture-demo.js` | Electron | The README screenshots, taken from the demo page and its synthetic clips |
 
 ```bash
 npm test                          # both Node checks
+npm run test:db                   # the database check
 npm run verify:app                # the end-to-end check
 npm run screenshots               # rewrite docs/*.png
 ```
