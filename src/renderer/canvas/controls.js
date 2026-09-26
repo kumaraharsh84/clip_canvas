@@ -14,7 +14,7 @@
 //   T                today                 Backspace   fly out one level
 //
 // Wheel direction is unchanged from the DOM version (deltaY > 0 zooms out),
-// which is what scratch/verify-time-zoom.js asserts.
+// which is what the v1 check scratch/archive/v1/verify-time-zoom.js asserted.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DBL_MS = 320;

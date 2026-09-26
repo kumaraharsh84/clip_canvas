@@ -1,8 +1,8 @@
 // ─── src/renderer/canvas/lod.js ──────────────────────────────────────────────
 // Level-of-detail vocabulary for the Time Canvas.
 //
-// The zoom labels reproduce the roadmap ladder that scratch/verify-time-zoom.js
-// asserts:  500% years | 400% months | 300% days | 200% hours | 100% clips
+// The zoom labels reproduce the roadmap ladder that the v1 check
+// scratch/archive/v1/verify-time-zoom.js asserted:  500% years | 400% months | 300% days | 200% hours | 100% clips
 //
 // The level is not derived from an absolute scale: the renderer finds which
 // box currently frames the view (renderer2d.framedNode) and the level is what

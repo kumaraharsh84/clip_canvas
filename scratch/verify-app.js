@@ -4,7 +4,7 @@
 // whole year loads its days, a new copy moves nothing outside today, search
 // reveals a clip in a day that was not loaded, and hours and clips render.
 //
-// Same pattern as benchmark-renderer.js: a thin IPC layer stands in for
+// Same pattern as v1's scratch/archive/v1/benchmark-renderer.js: a thin IPC layer stands in for
 // main.js so the tray, hotkey and clipboard watcher never start, and the REAL
 // renderer is loaded and inspected. The clip-asset:// handler is the app's own
 // (src/main/assetProtocol.js), not a copy, so image loading is really tested.

@@ -472,7 +472,7 @@ class ClipDatabase {
 
   // ── Search ─────────────────────────────────────────────────────────────────
   /**
-   * FTS5 search. The limit is clamped to 200, which benchmark-renderer.js notes
+   * FTS5 search. The limit is clamped to 200, which v1's benchmark-renderer.js notes
    * as the behaviour the June baseline predates -- keep it, the renderer's
    * result list is built around it.
    */

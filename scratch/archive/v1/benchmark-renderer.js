@@ -58,7 +58,7 @@ const CFG = {
   height: Number(flag("height", 640)),
   scrollMs: Number(flag("scroll-ms", 2000)),
   query: flag("query", "perf"),
-  out: flag("out", path.join(__dirname, "..", "benchmark_results.json")),
+  out: flag("out", path.join(__dirname, "results", "benchmark_results.json")),
   backfillTime: has("backfill-time"),
   keepOpen: has("keep-open"),
   profile: has("profile"),

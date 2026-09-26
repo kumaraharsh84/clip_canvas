@@ -1082,8 +1082,8 @@
     // ─── src/renderer/canvas/lod.js ──────────────────────────────────────────────
     // Level-of-detail vocabulary for the Time Canvas.
     //
-    // The zoom labels reproduce the roadmap ladder that scratch/verify-time-zoom.js
-    // asserts:  500% years | 400% months | 300% days | 200% hours | 100% clips
+    // The zoom labels reproduce the roadmap ladder that the v1 check
+    // scratch/archive/v1/verify-time-zoom.js asserted:  500% years | 400% months | 300% days | 200% hours | 100% clips
     //
     // The level is not derived from an absolute scale: the renderer finds which
     // box currently frames the view (renderer2d.framedNode) and the level is what
@@ -1133,7 +1133,7 @@
     // CSS pixels inside the canvas element. `scale` is the world->screen multiplier:
     // higher scale = zoomed IN = closer to the clips.
     //
-    // NOTE ON THE ZOOM LABEL: the roadmap (and verify-time-zoom.js) label zoom the
+    // NOTE ON THE ZOOM LABEL: the roadmap (and v1's verify-time-zoom.js) label zoom the
     // AutoCAD way, where a HIGHER percentage means zoomed OUT:
     //   500% years | 400% months | 300% days | 200% hours | 100% clips
     // That is the inverse of `scale`, so the label is derived in lod.js and the two
@@ -3139,7 +3139,7 @@
     //   T                today                 Backspace   fly out one level
     //
     // Wheel direction is unchanged from the DOM version (deltaY > 0 zooms out),
-    // which is what scratch/verify-time-zoom.js asserts.
+    // which is what the v1 check scratch/archive/v1/verify-time-zoom.js asserted.
     // ─────────────────────────────────────────────────────────────────────────────
 
     const DBL_MS = 320;
