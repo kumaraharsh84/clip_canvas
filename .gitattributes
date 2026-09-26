@@ -1,0 +1,15 @@
+# Store text with LF line endings, and check it out that way on every OS.
+* text=auto eol=lf
+
+# Windows Script Host files keep CRLF.
+*.vbs text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.ico binary
+*.png binary
+
+# Built by src/renderer/canvas/build.js from the modules beside it: collapsed
+# in diffs and left out of the language statistics.
+src/renderer/timecanvas.bundle.js linguist-generated=true
+demo/timecanvas.bundle.js linguist-generated=true
