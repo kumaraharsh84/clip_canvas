@@ -91,6 +91,10 @@ function start() {
   const ws = db.listWorkspaces();
   activeWorkspaceId = (ws.find((w) => w.is_default) || ws[0] || {}).id || null;
 
+  // No File/Edit/View menu bar: the canvas and its top bar are the interface.
+  // (Text fields keep Ctrl+C / Ctrl+V; Windows handles those without a menu.)
+  Menu.setApplicationMenu(null);
+
   handleAssetProtocol(protocol, storageDir);
   registerIpc();
   createWindow();
