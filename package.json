@@ -13,7 +13,8 @@
     "bundle": "node src/renderer/canvas/build.js src/renderer/timecanvas.bundle.js && node src/renderer/canvas/build.js demo/timecanvas.bundle.js",
     "demo": "node demo/serve.js",
     "verify:app": "electron scratch/verify-app.js",
-    "screenshots": "electron scratch/capture-demo.js"
+    "screenshots": "electron scratch/capture-demo.js",
+    "test:db": "electron scratch/verify-db.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
