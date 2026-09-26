@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self';">
+<title>ClipCanvas Settings</title>
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="settings.css">
+</head>
+<body>
+<main>
+  <header class="page-head">
+    <h1>Settings</h1>
+    <p class="sub">Changes are saved as you make them.</p>
+  </header>
+
+  <section aria-labelledby="h-shortcut">
+    <h2 id="h-shortcut">Shortcut</h2>
+    <div class="row">
+      <span class="text">
+        <span class="name">Open or hide ClipCanvas</span>
+        <span class="hint">Works from any app. Click the keys, then press a new combination.</span>
+      </span>
+      <button id="hotkey" class="keys" aria-describedby="hotkey-msg" title="Change the shortcut"></button>
+    </div>
+    <p id="hotkey-msg" class="msg" role="status"></p>
+    <p class="row-actions"><button id="hotkey-reset" class="link" hidden></button></p>
+  </section>
+
+  <section aria-labelledby="h-capture">
+    <h2 id="h-capture">Capture</h2>
+    <label class="row toggle">
+      <span class="text">
+        <span class="name">Save what I copy</span>
+        <span class="hint">Text, links and images. Copies that password managers mark as private are never saved.</span>
+      </span>
+      <input type="checkbox" id="capture" role="switch">
+    </label>
+    <p id="capture-error" class="msg error" hidden>
+      ClipCanvas can't read the clipboard right now.
+      <button id="capture-log" class="link">Open the log</button> to see why.
+    </p>
+  </section>
+
+  <section aria-labelledby="h-startup">
+    <h2 id="h-startup">Startup</h2>
+    <label class="row toggle">
+      <span class="text">
+        <span class="name">Start with Windows</span>
+        <span class="hint">ClipCanvas waits in the tray from the moment you sign in, so nothing you copy is missed.</span>
+      </span>
+      <input type="checkbox" id="autostart" role="switch">
+    </label>
+  </section>
+
+  <section aria-labelledby="h-storage">
+    <h2 id="h-storage">Storage</h2>
+    <div class="row">
+      <span class="text">
+        <span class="name">Your clips</span>
+        <span class="hint" id="stats"></span>
+        <span class="path" id="storage-path"></span>
+      </span>
+      <button id="open-storage">Open folder</button>
+    </div>
+    <div class="row">
+      <span class="text">
+        <span class="name">Log file</span>
+        <span class="hint">Errors and events, for when something goes wrong.</span>
+        <span class="path" id="log-path"></span>
+      </span>
+      <button id="open-log">Open log</button>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-about">
+    <h2 id="h-about">About</h2>
+    <div class="row">
+      <span class="text">
+        <span class="name">ClipCanvas <span id="version"></span></span>
+        <span class="hint" id="versions"></span>
+      </span>
+      <button id="open-home">GitHub page</button>
+    </div>
+  </section>
+</main>
+<script src="settings.js"></script>
+</body>
+</html>

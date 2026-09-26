@@ -37,9 +37,12 @@ const CHANNELS = [
   "storage:getStats", "storage:openFolder", "settings:getMaxFileSize",
   "window:hide", "window:minimize",
   "capture:getState", "capture:setPaused",
+  "settings:get", "settings:setHotkey", "settings:resetHotkey", "settings:suspendHotkey",
+  "settings:setAutoStart",
+  "app:openLog", "app:openHomepage", "window:openSettings",
 ];
 
-const EVENTS = ["clip:added", "clips:changed", "workspace:changed", "capture:changed"];
+const EVENTS = ["clip:added", "clips:changed", "workspace:changed", "capture:changed", "settings:changed"];
 
 async function safeInvoke(channel, ...args) {
   if (!CHANNELS.includes(channel)) {
@@ -104,7 +107,19 @@ const api = {
     state: () => safeInvoke("capture:getState"),
     setPaused: (paused) => safeInvoke("capture:setPaused", paused),
   },
+  settings: {
+    get: () => safeInvoke("settings:get"),
+    setHotkey: (accelerator) => safeInvoke("settings:setHotkey", accelerator),
+    resetHotkey: () => safeInvoke("settings:resetHotkey"),
+    suspendHotkey: (on) => safeInvoke("settings:suspendHotkey", !!on),
+    setAutoStart: (on) => safeInvoke("settings:setAutoStart", !!on),
+  },
+  app: {
+    openLog: () => safeInvoke("app:openLog"),
+    openHomepage: () => safeInvoke("app:openHomepage"),
+  },
   window: {
+    openSettings: () => safeInvoke("window:openSettings"),
     hide: () => safeInvoke("window:hide"),
     minimize: () => safeInvoke("window:minimize"),
   },

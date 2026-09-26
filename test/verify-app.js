@@ -12,7 +12,8 @@
 // Usage:
 //   npx electron test/verify-app.js [--db=PATH] [--shots=DIR] [--keep-open]
 //
-// --shots=DIR writes today.png, overview.png, month.png, hour.png and clip.png. The window renders
+// --shots=DIR writes today.png, overview.png, month.png, hour.png, clip.png
+// and settings.png. The window renders
 // OFFSCREEN: a hidden normal window stops producing compositor frames, and
 // capturePage then returns a stale one -- an earlier version of this harness
 // photographed the start-up view no matter where the camera had flown.
@@ -21,13 +22,14 @@
 // %APPDATA%/clipcanvas/clipcanvas.db.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { app, BrowserWindow, ipcMain, protocol } = require("electron");
+const { app, BrowserWindow, ipcMain, protocol, globalShortcut } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
 
 const { ClipDatabase } = require("../src/main/db");
 const { registerAssetScheme, handleAssetProtocol } = require("../src/main/assetProtocol");
+const hotkeys = require("../src/main/hotkey");
 
 const argv = process.argv.slice(2);
 const flag = (n, d) => {
@@ -67,6 +69,8 @@ function copyDb() {
   return tmp;
 }
 
+const settingsCalls = [];
+
 function registerIpc(db, workspaceId) {
   const handle = (channel, fn) => {
     ipcMain.handle(channel, async (_e, ...args) => {
@@ -105,6 +109,37 @@ function registerIpc(db, workspaceId) {
   handle("clips:forDays", (o = {}) => db.getClipsForDays(ws(o)));
   handle("capture:getState", () => ({ paused: false }));
   handle("capture:setPaused", (p) => ({ paused: !!p }));
+
+  // The Settings window. setHotkey runs the app's real rules (hotkey.js) but
+  // registers nothing: this harness must not take a shortcut from the desktop.
+  let hotkey = hotkeys.DEFAULT_HOTKEY;
+  let saved = null;
+  let autoStart = true;
+  const settingsState = () => ({
+    hotkey, hotkeySaved: saved, hotkeyDefault: hotkeys.DEFAULT_HOTKEY, hotkeyNote: null, autoStart, dev: false,
+    capture: { paused: false, error: false },
+    storageDir: LIVE_STORE, logFile: path.join(os.tmpdir(), "clipcanvas.log"),
+    stats: { clips: 649, dbBytes: 5.2e6, imageBytes: 1.24e8, images: 84 },
+    version: "0.0.0-verify", versions: process.versions, homepage: "https://github.com/kumaraharsh84/clip_canvas",
+  });
+  handle("settings:get", () => settingsState());
+  handle("settings:setHotkey", (acc) => {
+    settingsCalls.push(acc);
+    const r = hotkeys.check(acc);
+    if (r.ok) { hotkey = r.hotkey; saved = r.hotkey === hotkeys.DEFAULT_HOTKEY ? null : r.hotkey; }
+    return { ...r, state: settingsState() };
+  });
+  handle("settings:resetHotkey", () => {
+    settingsCalls.push("reset");
+    hotkey = hotkeys.DEFAULT_HOTKEY;
+    saved = null;
+    return { ok: true, hotkey, state: settingsState() };
+  });
+  handle("settings:suspendHotkey", (on) => { settingsCalls.push(on ? "suspend" : "resume"); return true; });
+  handle("settings:setAutoStart", (on) => { autoStart = !!on; return settingsState(); });
+  handle("app:openLog", () => ({ ok: true }));
+  handle("app:openHomepage", () => ({ ok: true }));
+  handle("window:openSettings", () => null);
   handle("storage:getStats", (o = {}) => db.getStorageStats(ws(o)));
   handle("storage:openFolder", () => ({ ok: true }));
   handle("settings:getMaxFileSize", () => 0);
@@ -325,6 +360,51 @@ const CLIP = `(async () => {
   return { category: d.category, time: d.time, chars: d.chars, lines: d.lines, frame: tc.stats().frame };
 })()`;
 
+// Drive the Settings window as a user would: read it, record a shortcut,
+// try a reserved one, cancel one.
+const SETTINGS = `(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let w = 0; w < 5000 && !document.querySelector("#hotkey kbd"); w += 100) await sleep(100);
+  const caps = () => [...document.querySelectorAll("#hotkey kbd")].map((k) => k.textContent).join(" + ");
+  const msg = () => ({ text: document.getElementById("hotkey-msg").textContent, cls: document.getElementById("hotkey-msg").className });
+  const press = (code, key, mods = {}) =>
+    document.dispatchEvent(new KeyboardEvent("keydown", { code, key, bubbles: true, cancelable: true, ...mods }));
+  const out = {
+    shown: caps(),
+    version: document.getElementById("version").textContent,
+    stats: document.getElementById("stats").textContent,
+    autostart: document.getElementById("autostart").checked,
+    capture: document.getElementById("capture").checked,
+  };
+
+  document.getElementById("hotkey").click();
+  await sleep(150);
+  out.recording = document.getElementById("hotkey").classList.contains("recording");
+  press("ControlLeft", "Control", { ctrlKey: true });
+  press("AltLeft", "Alt", { ctrlKey: true, altKey: true });
+  out.held = document.getElementById("hotkey").textContent;
+  press("KeyK", "k", { ctrlKey: true, altKey: true });
+  await sleep(300);
+  out.saved = { caps: caps(), msg: msg(), reset: !document.getElementById("hotkey-reset").hidden };
+
+  document.getElementById("hotkey").click();
+  await sleep(150);
+  press("KeyC", "c", { ctrlKey: true });
+  await sleep(300);
+  out.reserved = { caps: caps(), msg: msg() };
+
+  document.getElementById("hotkey").click();
+  await sleep(150);
+  press("Escape", "Escape");
+  await sleep(250);
+  out.cancelled = { caps: caps(), recording: document.getElementById("hotkey").classList.contains("recording") };
+
+  document.getElementById("hotkey-reset").click();
+  await sleep(250);
+  out.reset = { caps: caps(), resetShown: !document.getElementById("hotkey-reset").hidden, msg: msg() };
+  return out;
+})()`;
+
 app.whenReady().then(async () => {
   if (!fs.existsSync(SRC_DB)) {
     console.error("[verify] no database at", SRC_DB);
@@ -499,6 +579,63 @@ app.whenReady().then(async () => {
     try { new ClipboardWatcher({ clipboard, onText() {}, onImage() {}, sequence: null }); } catch (e) { err = e; }
     ok("the clipboard watcher can run on Electron " + process.versions.electron, !err, err ? err.message : "");
     ok("readText answers synchronously", typeof clipboard.readText() === "string");
+  }
+
+  // ── The Settings window ────────────────────────────────────────────────
+  console.log("\n-- settings window --");
+  try {
+    const sw = new BrowserWindow({
+      width: 580, height: 720, show: KEEP_OPEN,
+      webPreferences: {
+        preload: path.join(__dirname, "..", "src", "main", "preload.js"),
+        contextIsolation: true, nodeIntegration: false, sandbox: true,
+        offscreen: OSR, backgroundThrottling: false,
+      },
+    });
+    sw.webContents.on("console-message", (e, ...old) => {
+      const level = e.level !== undefined ? e.level : old[0];
+      const message = e.message !== undefined ? e.message : old[1];
+      if (level === "warning" || level === "error" || level >= 2) errors.push("settings: " + message);
+    });
+    await sw.loadFile(path.join(__dirname, "..", "src", "renderer", "settings.html"));
+    const st = await sw.webContents.executeJavaScript(SETTINGS, true);
+    ok("shows the current shortcut as key caps", st.shown === hotkeys.display(hotkeys.DEFAULT_HOTKEY), st.shown);
+    ok("shows the version and storage figures", st.version === "0.0.0-verify" && /649 clips/.test(st.stats), st.stats);
+    ok("shows capture on and Start with Windows on", st.capture && st.autostart);
+    ok("clicking the keys starts recording, and held keys show", st.recording && /Ctrl.*Alt/.test(st.held), st.held);
+    ok("a recorded Ctrl + Alt + K is saved and confirmed",
+       st.saved.caps === "Ctrl + Alt + K" && st.saved.msg.cls.includes("ok") && st.saved.reset, JSON.stringify(st.saved));
+    ok("Ctrl + C is refused, with the reason, and the shortcut kept",
+       st.reserved.caps === "Ctrl + Alt + K" && st.reserved.msg.cls.includes("error") && /basic shortcuts/.test(st.reserved.msg.text),
+       st.reserved.msg.text);
+    ok("Esc cancels a recording", st.cancelled.caps === "Ctrl + Alt + K" && !st.cancelled.recording);
+    ok("'Use the default' goes back to " + hotkeys.display(hotkeys.DEFAULT_HOTKEY) + " and hides itself",
+       st.reset.caps === hotkeys.display(hotkeys.DEFAULT_HOTKEY) && !st.reset.resetShown && st.reset.msg.cls.includes("ok"),
+       JSON.stringify(st.reset));
+    ok("the global shortcut is suspended while recording, and resumed",
+       settingsCalls[0] === "suspend" && settingsCalls.includes("resume") && settingsCalls.includes("Ctrl+Alt+K"),
+       settingsCalls.join(", "));
+    if (SHOTS) {
+      await sw.webContents.executeJavaScript("document.getElementById('hotkey-msg').textContent = ''; document.getElementById('hotkey-msg').className = 'msg'");
+      fs.mkdirSync(SHOTS, { recursive: true });
+      await new Promise((r) => setTimeout(r, 250));
+      fs.writeFileSync(path.join(SHOTS, "settings.png"), (await sw.webContents.capturePage()).toPNG());
+      info("wrote " + path.join(SHOTS, "settings.png"));
+    }
+    if (!KEEP_OPEN) sw.destroy();
+  } catch (err) {
+    ok("settings probe", false, err.message);
+  }
+
+  // Electron itself must accept the default shortcut. (Registered for a moment
+  // only if nothing else on this machine has it, then let go.)
+  {
+    let accepted = true;
+    let free = false;
+    try { free = globalShortcut.register(hotkeys.DEFAULT_HOTKEY, () => {}); } catch (_) { accepted = false; }
+    if (free) globalShortcut.unregister(hotkeys.DEFAULT_HOTKEY);
+    ok("Electron accepts the default shortcut " + hotkeys.DEFAULT_HOTKEY, accepted);
+    info(free ? "and it is free on this machine" : "but another app on this machine holds it");
   }
 
   console.log("\n-- renderer console --");

@@ -39,7 +39,7 @@ module.exports = [
   },
   {
     // Plain browser scripts, not CommonJS modules.
-    files: ["src/renderer/renderer.js", "demo/mockdata.js"],
+    files: ["src/renderer/renderer.js", "src/renderer/settings.js", "demo/mockdata.js"],
     languageOptions: { sourceType: "script", globals: { ...globals.browser } },
   },
 ];

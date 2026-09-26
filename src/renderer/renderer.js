@@ -12,7 +12,8 @@
 // down to tc.refresh() or tc.setSource() -- never "reload everything".
 //
 // Navigation keys (F, T, +/-, arrows, Backspace) belong to the canvas
-// controls. This file handles app-level keys: "/" to search, Escape to close.
+// controls. This file handles app-level keys: "/" to search, Ctrl+, for
+// Settings, Escape to close.
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function () {
@@ -25,7 +26,8 @@
   const el = {
     workspace: $("workspace"), board: $("board"), filter: $("filter"),
     search: $("search"), today: $("today"), fit: $("fit"), reload: $("reload"),
-    capture: $("capture"), emptyTrash: $("empty-trash"), status: $("status"),
+    capture: $("capture"), emptyTrash: $("empty-trash"), settings: $("settings"),
+    status: $("status"),
     stage: $("time-container"), hud: $("hud"), details: $("details"),
     results: $("results"), empty: $("empty"), legend: $("legend"), timeline: $("timeline"),
     infoPath: $("info-path"), infoTitle: $("info-title"),
@@ -384,6 +386,7 @@
     el.reload.addEventListener("click", resource);
     el.fit.addEventListener("click", () => tc.fitAll(true));
     el.today.addEventListener("click", () => tc.showToday(true));
+    el.settings.addEventListener("click", () => api.window.openSettings());
 
     el.capture.addEventListener("click", async () => {
       setCaptureUi(await api.capture.setPaused(!paused));
@@ -454,6 +457,7 @@
         return;
       }
       if (!typing && e.key === "/") { e.preventDefault(); el.search.focus(); el.search.select(); }
+      if (e.ctrlKey && e.key === ",") { e.preventDefault(); api.window.openSettings(); }
     });
   }
 

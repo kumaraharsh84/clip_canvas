@@ -1,10 +1,11 @@
 // ─── src/main/main.js ────────────────────────────────────────────────────────
-// Electron main process: window, tray, global hotkey, clipboard watcher, IPC.
+// Electron main process: windows, tray, global hotkey, clipboard watcher, IPC.
 //
 // RECONSTRUCTED after the original source was lost. Behaviour follows what the
 // README and planning notes describe and what test/*.js expects:
 //   - starts as a tray utility; the panel may start hidden
-//   - Ctrl+Shift+V toggles the panel
+//   - a global shortcut toggles the panel (Win+Alt+V unless changed in
+//     Settings, or taken; see hotkey.js for why it is not Ctrl+Shift+V)
 //   - closing the window hides it, it never quits the app
 //   - every IPC handler answers { success, data } / { success, error }
 //
@@ -13,7 +14,8 @@
 // password managers mark as private. Capture can be paused from the tray.
 //
 // Errors go to a log file (log.js) -- the app runs with no console -- which
-// the tray menu opens.
+// the tray menu opens. The Settings window (renderer/settings.html) changes
+// the shortcut, capture, start-up; the tray keeps quick toggles.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const {
@@ -31,6 +33,8 @@ const { classify } = require("./classifyText");
 const { ClipboardWatcher } = require("./clipwatch");
 const { Settings } = require("./settings");
 const log = require("./log");
+const hotkeys = require("./hotkey");
+const pkg = require("../../package.json");
 
 const IS_DEV = process.argv.includes("--dev");
 const POLL_MS = 700;
@@ -42,6 +46,10 @@ let storageDir = null;
 let watcher = null;
 let settings = null;
 let captureError = false; // the watcher cannot read the clipboard (see log.js)
+let settingsWin = null;
+let hotkeyActive = null;     // the registered global shortcut, canonical form
+let hotkeyNote = null;       // why the active shortcut is not the expected one
+let hotkeySuspended = false; // unregistered while Settings records a new one
 let activeWorkspaceId = null;
 
 // A custom scheme must be registered as privileged BEFORE app ready. The
@@ -75,6 +83,7 @@ function start() {
   log.info(`ClipCanvas ${app.getVersion()} starting | Electron ${process.versions.electron} | ${process.platform}`);
   storageDir = path.join(userData, "storage");
   db = new ClipDatabase(path.join(userData, "clipcanvas.db"), storageDir);
+  // No "hotkey" means the defaults (hotkey.js); one is saved only when chosen.
   settings = new Settings(path.join(userData, "settings.json"), { capturePaused: false });
 
   // Start with Windows by default (the planning decision), once; after that
@@ -98,10 +107,12 @@ function start() {
   handleAssetProtocol(protocol, storageDir);
   registerIpc();
   createWindow();
-  createTray();
 
-  globalShortcut.register("CommandOrControl+Shift+V", togglePanel);
+  chooseHotkey(settings.get("hotkey"));
+  createTray();
   startClipboardWatcher();
+  // `npm run dev -- --settings` opens Settings straight away, for working on it.
+  if (IS_DEV && process.argv.includes("--settings")) openSettings();
 
   app.on("activate", () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
 }
@@ -149,15 +160,52 @@ function createWindow() {
     if (!app.isQuitting) { e.preventDefault(); win.hide(); }
   });
 
-  // Renderer errors reach the log too. (Electron 35+ puts level and message on
-  // the event; older versions passed them as arguments.)
-  win.webContents.on("console-message", (e, ...old) => {
+  logRendererErrors(win.webContents, "window");
+  if (IS_DEV) win.webContents.openDevTools({ mode: "detach" });
+}
+
+/**
+ * Renderer errors reach the log too. (Electron 35+ puts level and message on
+ * the event; older versions passed them as arguments.)
+ */
+function logRendererErrors(webContents, label) {
+  webContents.on("console-message", (e, ...old) => {
     const level = e.level !== undefined ? e.level : old[0];
     const message = e.message !== undefined ? e.message : old[1];
-    if (level === 3 || level === "error") log.error("window:", message);
+    if (level === 3 || level === "error") log.error(label + ":", message);
   });
+}
 
-  if (IS_DEV) win.webContents.openDevTools({ mode: "detach" });
+/** The Settings window: one at a time, closed (not hidden) when dismissed. */
+function openSettings() {
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    if (settingsWin.isMinimized()) settingsWin.restore();
+    settingsWin.show();
+    settingsWin.focus();
+    return;
+  }
+  const { height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  settingsWin = new BrowserWindow({
+    width: 580,
+    height: Math.min(800, sh - 40),
+    minWidth: 480,
+    minHeight: 520,
+    show: false,
+    backgroundColor: "#0d0f12",
+    title: "ClipCanvas Settings",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      spellcheck: false,
+    },
+  });
+  settingsWin.loadFile(path.join(__dirname, "..", "renderer", "settings.html"));
+  settingsWin.once("ready-to-show", () => settingsWin.show());
+  // Closed mid-recording: the old shortcut must come back.
+  settingsWin.on("closed", () => { settingsWin = null; resumeHotkey(); });
+  logRendererErrors(settingsWin.webContents, "settings");
 }
 
 function createTray() {
@@ -176,11 +224,14 @@ function updateTray() {
       ? [{ label: "Capture is failing — open the log", click: () => shell.openPath(log.file) },
          { type: "separator" }]
       : []),
-    { label: "Open ClipCanvas", click: showPanel },
+    // The shortcut is shown beside the item, not registered by the menu.
+    { label: "Open ClipCanvas", click: showPanel,
+      ...(hotkeyActive ? { accelerator: hotkeyActive, registerAccelerator: false } : {}) },
+    { label: "Settings…", click: openSettings },
     { type: "separator" },
     { label: "Pause capture", type: "checkbox", checked: paused, click: (item) => setPaused(item.checked) },
     { label: "Start with Windows", type: "checkbox", checked: !!settings.get("autoStart"),
-      click: (item) => { settings.set("autoStart", item.checked); applyAutoStart(item.checked); } },
+      click: (item) => setAutoStart(item.checked) },
     { type: "separator" },
     { label: "Open storage folder", click: () => shell.openPath(storageDir) },
     { label: "Open log file", enabled: !!log.file, click: () => shell.openPath(log.file) },
@@ -194,6 +245,96 @@ function setPaused(paused) {
   if (watcher) watcher.setPaused(!!paused);
   updateTray();
   broadcast("capture:changed", captureState());
+}
+
+function setAutoStart(on) {
+  settings.set("autoStart", !!on);
+  applyAutoStart(!!on);
+  updateTray();
+  broadcast("settings:changed", settingsState());
+}
+
+// ── Global shortcut ──────────────────────────────────────────────────────────
+/**
+ * Make `acc` the global shortcut. The new one is registered before the old
+ * one is let go, so a shortcut another app already owns leaves the old one
+ * working. @returns hotkeys.check()'s result, or an error from registering.
+ */
+function applyHotkey(acc) {
+  const c = hotkeys.check(acc);
+  if (!c.ok) { resumeHotkey(); return c; }
+  if (c.hotkey === hotkeyActive) { resumeHotkey(); return c; }
+
+  let registered = false;
+  try {
+    registered = globalShortcut.register(c.hotkey, togglePanel);
+  } catch (err) {
+    log.error("global shortcut rejected:", c.hotkey, err.message);
+  }
+  if (!registered) {
+    resumeHotkey();
+    return { ok: false, error: `${hotkeys.display(c.hotkey)} is already used by another app. Pick another.` };
+  }
+  if (hotkeyActive && !hotkeySuspended) globalShortcut.unregister(hotkeyActive);
+  hotkeySuspended = false;
+  hotkeyActive = c.hotkey;
+  log.info("global shortcut:", c.hotkey);
+  return c;
+}
+
+/**
+ * Register the saved shortcut, or the first default that is free, and keep
+ * the note that explains a substitute (hotkey.choose).
+ */
+function chooseHotkey(saved) {
+  const c = hotkeys.choose(saved || null, (acc) => applyHotkey(acc).ok);
+  hotkeyNote = c.note;
+  if (c.note) log.warn("global shortcut:", c.note);
+}
+
+/**
+ * While Settings records a new shortcut, the current one is unregistered --
+ * otherwise pressing it (to keep it, say) would toggle the window instead of
+ * reaching the recorder.
+ */
+function suspendHotkey() {
+  if (!hotkeyActive || hotkeySuspended) return;
+  globalShortcut.unregister(hotkeyActive);
+  hotkeySuspended = true;
+}
+
+function resumeHotkey() {
+  if (!hotkeySuspended) return;
+  hotkeySuspended = false;
+  let ok = false;
+  try { ok = globalShortcut.register(hotkeyActive, togglePanel); } catch (_) {}
+  if (!ok) log.warn("could not re-register the global shortcut", hotkeyActive);
+}
+
+/** Everything the Settings window shows. */
+function settingsState() {
+  const stats = db.getStorageStats({});
+  const images = stats.byType.find((t) => t.type === "image");
+  return {
+    hotkey: hotkeyActive,                       // null: none could be registered
+    hotkeySaved: settings.get("hotkey") || null, // null: using the defaults
+    hotkeyDefault: hotkeys.DEFAULT_HOTKEY,
+    hotkeyNote,
+    autoStart: !!settings.get("autoStart"),
+    dev: IS_DEV,
+    capture: captureState(),
+    storageDir,
+    logFile: log.file,
+    stats: {
+      clips: stats.totals.count,
+      dbBytes: stats.dbBytes,
+      imageBytes: images ? images.bytes : 0,
+      images: images ? images.count : 0,
+    },
+    version: app.getVersion(),
+    versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
+    homepage: pkg.homepage || null,
+  };
 }
 
 function captureState() {
@@ -397,6 +538,33 @@ function registerIpc() {
     if (watcher) watcher.noteOwnWrite();
     return { ok: true, id };
   });
+
+  handle("settings:get", () => settingsState());
+  handle("settings:setHotkey", (acc) => {
+    const r = applyHotkey(acc);
+    if (r.ok) {
+      // Choosing the default is the same as not choosing: it stays unsaved,
+      // so the fallbacks still apply if it is ever taken.
+      settings.set("hotkey", r.hotkey === hotkeys.DEFAULT_HOTKEY ? undefined : r.hotkey);
+      hotkeyNote = null;
+      updateTray();
+      broadcast("settings:changed", settingsState());
+    }
+    return { ...r, state: settingsState() };
+  });
+  handle("settings:resetHotkey", () => {
+    settings.set("hotkey", undefined);
+    chooseHotkey(null);
+    updateTray();
+    broadcast("settings:changed", settingsState());
+    return { ok: !!hotkeyActive, hotkey: hotkeyActive, state: settingsState() };
+  });
+  handle("settings:suspendHotkey", (on) => { if (on) suspendHotkey(); else resumeHotkey(); return true; });
+  handle("settings:setAutoStart", (on) => { setAutoStart(on); return settingsState(); });
+  handle("app:openLog", () => { if (log.file) shell.openPath(log.file); return { ok: !!log.file }; });
+  // Only the project's own page: the renderer never picks what gets opened.
+  handle("app:openHomepage", () => { if (pkg.homepage) shell.openExternal(pkg.homepage); return { ok: !!pkg.homepage }; });
+  handle("window:openSettings", () => { openSettings(); return null; });
 
   handle("capture:getState", () => captureState());
   handle("capture:setPaused", (paused) => { setPaused(paused); return captureState(); });
