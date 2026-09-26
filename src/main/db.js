@@ -207,18 +207,18 @@ class ClipDatabase {
     if (count > 0) return;
 
     const ins = db.prepare(
-      "INSERT INTO workspaces (name, slug, is_default) VALUES (?, ?, 1)"
+      "INSERT INTO workspaces (name, slug, is_default) VALUES (?, ?, ?)"
     );
     const insBoard = db.prepare(
       "INSERT OR IGNORE INTO boards (workspace_id, name) VALUES (?, ?)"
     );
     db.transaction(() => {
-      const personal = ins.run("Personal", "personal").lastInsertRowid;
-      const research = ins.run("Research", "research").lastInsertRowid;
-      const college = ins.run("College", "college").lastInsertRowid;
+      // Only Personal is the default: new clips go to the default workspace.
+      ins.run("Personal", "personal", 1);
+      const research = ins.run("Research", "research", 0).lastInsertRowid;
+      const college = ins.run("College", "college", 0).lastInsertRowid;
       for (const b of ["MongoDB", "React", "APIs"]) insBoard.run(research, b);
       for (const b of ["Final Year Project", "Internship", "Viva"]) insBoard.run(college, b);
-      void personal;
     })();
   }
 
