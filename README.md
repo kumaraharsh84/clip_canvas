@@ -1,6 +1,10 @@
-# ClipCanvas
+<p align="center">
+  <img src="src/assets/logo.svg" width="112" alt="ClipCanvas logo: a clipboard holding a mosaic of coloured clips">
+</p>
 
-**Your whole clipboard history, on one zoomable timeline.**
+<h1 align="center">ClipCanvas</h1>
+
+<p align="center"><b>Your whole clipboard history, on one zoomable calendar.</b></p>
 
 ClipCanvas keeps everything you copy on Windows — text, code, links and images —
 and lays it out on one canvas shaped like a wall calendar. Every day has its own
@@ -141,6 +145,7 @@ source tree, where every file is a box and every box is readable up close.
 | `npm run bundle` | rebuild the canvas bundles after editing `src/renderer/canvas/` |
 | `npm run demo` | serve the demo at <http://localhost:8790> |
 | `npm run screenshots` | retake the screenshots in `docs/` from the demo |
+| `npm run icons` | rebuild `src/assets/icon.ico` and `icon.png` from `logo.svg` |
 
 The renderer runs under context isolation, so it loads one prebuilt bundle
 instead of modules. GitHub Actions runs both checks on every push and fails if a
@@ -168,8 +173,9 @@ src/
     settings.html      the Settings window (+ settings.css, settings.js)
     canvas/            the Time Canvas engine -- see its README
     timecanvas.bundle.js   built from canvas/
-  assets/              app and tray icon
+  assets/              logo.svg (+ logo-small.svg for 16-32 px) and the icons built from them
 demo/                  the canvas on its own, with synthetic clips
+tools/                 build-icons.js -- `npm run icons`
 test/                  checks, benchmarks and diagnostics -- see its README
 planning/              product decisions, roadmap and audits
 docs/                  screenshots

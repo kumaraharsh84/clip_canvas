@@ -8,6 +8,10 @@ What changed in each version of ClipCanvas. Newest first. The format follows
 
 ### Added
 
+- **A logo**: a clipboard holding the time mosaic, in the canvas's own colours
+  -- on the windows, the taskbar, the tray, the installer, the top bar and the
+  README. A simplified version keeps it clear at 16-32 px. `npm run icons`
+  rebuilds every size from the SVG.
 - **Settings window** — tray menu, the top bar or `Ctrl+,`: the shortcut,
   capture, Start with Windows, how much is stored, the storage folder and log,
   and the version. Changes save as you make them.
