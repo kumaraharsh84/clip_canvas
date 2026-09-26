@@ -41,6 +41,7 @@ let db = null;
 let storageDir = null;
 let watcher = null;
 let settings = null;
+let captureError = false; // the watcher cannot read the clipboard (see log.js)
 let activeWorkspaceId = null;
 
 // A custom scheme must be registered as privileged BEFORE app ready. The
@@ -160,8 +161,13 @@ function createTray() {
 function updateTray() {
   if (!tray) return;
   const paused = !!settings.get("capturePaused");
-  tray.setToolTip(paused ? "ClipCanvas — capture paused" : "ClipCanvas");
+  tray.setToolTip(captureError ? "ClipCanvas — cannot read the clipboard (see the log)"
+    : paused ? "ClipCanvas — capture paused" : "ClipCanvas");
   tray.setContextMenu(Menu.buildFromTemplate([
+    ...(captureError
+      ? [{ label: "Capture is failing — open the log", click: () => shell.openPath(log.file) },
+         { type: "separator" }]
+      : []),
     { label: "Open ClipCanvas", click: showPanel },
     { type: "separator" },
     { label: "Pause capture", type: "checkbox", checked: paused, click: (item) => setPaused(item.checked) },
@@ -179,7 +185,11 @@ function setPaused(paused) {
   settings.set("capturePaused", !!paused);
   if (watcher) watcher.setPaused(!!paused);
   updateTray();
-  broadcast("capture:changed", { paused: !!paused });
+  broadcast("capture:changed", captureState());
+}
+
+function captureState() {
+  return { paused: !!settings.get("capturePaused"), error: captureError };
 }
 
 /**
@@ -242,6 +252,13 @@ function startClipboardWatcher() {
     onText: captureText,
     // PNG is encoded only here, once per captured image -- never to check.
     onImage: (img, hash) => captureImage(img.toPNG(), hash, img.getSize()),
+    onHealth: (ok) => {
+      captureError = !ok;
+      if (ok) log.info("capture is working again");
+      else log.error("capture is failing: the clipboard cannot be read");
+      updateTray();
+      broadcast("capture:changed", captureState());
+    },
   });
   watcher.setPaused(!!settings.get("capturePaused"));
   watcher.start();
@@ -361,8 +378,8 @@ function registerIpc() {
     return { ok: true, id };
   });
 
-  handle("capture:getState", () => ({ paused: !!settings.get("capturePaused") }));
-  handle("capture:setPaused", (paused) => { setPaused(paused); return { paused: !!paused }; });
+  handle("capture:getState", () => captureState());
+  handle("capture:setPaused", (paused) => { setPaused(paused); return captureState(); });
 
   handle("time:getYears", (wid) => db.getYears(wid || activeWorkspaceId));
   handle("time:getMonths", ({ year, workspaceId } = {}) =>

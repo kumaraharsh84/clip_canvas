@@ -18,6 +18,9 @@ jobs:
       - name: Classification regression suite
         run: node scratch/verify-classify.js
 
+      - name: Clipboard watcher
+        run: node scratch/verify-clipwatch.js
+
       - name: Time canvas layout invariants
         run: node scratch/verify-timecanvas-2d.js --clips=20000
 

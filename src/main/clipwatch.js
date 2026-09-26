@@ -23,13 +23,23 @@
 //   Clipboard Viewer Ignore                        older convention, same meaning
 //   CanIncludeInClipboardHistory = 0 (a DWORD)     keep it out of history
 // These are the formats Windows' own clipboard history respects.
+//
+// WHEN READING FAILS
+// A failed poll is retried on the next one (the sequence number is recorded
+// only after a successful read, so a clipboard another app had locked for a
+// moment is not skipped). Failures are logged once, then every LOG_EVERY;
+// after FAIL_ALERT in a row the watcher reports itself unhealthy (onHealth),
+// and main.js shows it in the tray and the window, and again on recovery.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const crypto = require("crypto");
+const log = require("./log");
 
 const IGNORE_FORMATS = ["ExcludeClipboardContentFromMonitorProcessing", "Clipboard Viewer Ignore"];
 const HISTORY_FORMAT = "CanIncludeInClipboardHistory";
 const IMAGE_FALLBACK_MS = 3000;
+const FAIL_ALERT = 5;   // failed polls in a row before capture counts as broken (~3.5 s)
+const LOG_EVERY = 100;  // while failing, log every Nth failure, not every one
 
 /** GetClipboardSequenceNumber, or null where it cannot be had. */
 function loadSequenceNumber() {
@@ -41,7 +51,7 @@ function loadSequenceNumber() {
     fn();
     return fn;
   } catch (err) {
-    console.warn("[clipcanvas] clipboard sequence number unavailable, polling instead:", err.message);
+    log.warn("clipboard sequence number unavailable, polling instead:", err.message);
     return null;
   }
 }
@@ -69,12 +79,16 @@ class ClipboardWatcher {
    * @param {object}   o.clipboard  Electron's clipboard module
    * @param {function} o.onText     (text) => void
    * @param {function} o.onImage    (nativeImage, hash) => void
+   * @param {function} [o.onHealth] (ok) => void -- false after FAIL_ALERT failed
+   *                                polls in a row, true once polling recovers
    * @param {number}   [o.intervalMs]
    */
-  constructor({ clipboard, onText, onImage, intervalMs = 700, sequence = loadSequenceNumber() }) {
+  constructor({ clipboard, onText, onImage, onHealth = null, intervalMs = 700, sequence = loadSequenceNumber() }) {
     this.cb = clipboard;
     this.onText = onText;
     this.onImage = onImage;
+    this.onHealth = onHealth;
+    this.failures = 0;
     this.intervalMs = intervalMs;
     this.seq = sequence;
     this.lastSeq = null;
@@ -127,45 +141,74 @@ class ClipboardWatcher {
   tick() {
     if (this.paused) return;
     try {
-      let imageDue = true;
-      if (this.seq) {
-        const s = this.seq();
-        if (s === this.lastSeq) return; // nothing new: the common case, ~1 µs
-        this.lastSeq = s;
-      } else {
-        const now = Date.now();
-        imageDue = now - this.lastImageCheck >= IMAGE_FALLBACK_MS;
-        if (imageDue) this.lastImageCheck = now;
-      }
-
-      if (isPrivate(this.cb)) return;
-
-      // Images first: copying an image often leaves a text representation too
-      // (a filename, or HTML), and capturing that instead loses the picture.
-      if (this.hasImage()) {
-        if (!imageDue) return;
-        const img = this.cb.readImage();
-        if (!img.isEmpty()) {
-          const hash = imageHash(img);
-          if (hash !== this.lastImageHash) {
-            this.lastImageHash = hash;
-            this.lastText = this.cb.readText() || this.lastText;
-            this.onImage(img, hash);
-          }
-          return;
-        }
-      }
-
-      const text = this.cb.readText();
-      if (text && text !== this.lastText) {
-        this.lastText = text;
-        this.lastImageHash = null;
-        this.onText(text);
-      }
+      this.poll();
     } catch (err) {
-      console.error("[clipcanvas] clipboard poll failed:", err.message);
+      this.failed(err);
+      return;
     }
+    if (this.failures) this.recovered();
+  }
+
+  poll() {
+    let imageDue = true;
+    let s = null;
+    if (this.seq) {
+      s = this.seq();
+      if (s === this.lastSeq) return; // nothing new: the common case, ~1 µs
+    } else {
+      const now = Date.now();
+      imageDue = now - this.lastImageCheck >= IMAGE_FALLBACK_MS;
+      if (imageDue) this.lastImageCheck = now;
+    }
+    this.read(imageDue);
+    // Only after a successful read: if it threw, the next poll tries again.
+    if (s !== null) this.lastSeq = s;
+  }
+
+  read(imageDue) {
+    if (isPrivate(this.cb)) return;
+
+    // Images first: copying an image often leaves a text representation too
+    // (a filename, or HTML), and capturing that instead loses the picture.
+    if (this.hasImage()) {
+      if (!imageDue) return;
+      const img = this.cb.readImage();
+      if (!img.isEmpty()) {
+        const hash = imageHash(img);
+        if (hash !== this.lastImageHash) {
+          this.lastImageHash = hash;
+          this.lastText = this.cb.readText() || this.lastText;
+          this.onImage(img, hash);
+        }
+        return;
+      }
+    }
+
+    const text = this.cb.readText();
+    if (text && text !== this.lastText) {
+      this.lastText = text;
+      this.lastImageHash = null;
+      this.onText(text);
+    }
+  }
+
+  failed(err) {
+    this.failures++;
+    if (this.failures === 1 || this.failures % LOG_EVERY === 0) {
+      log.error(`clipboard poll failed (${this.failures} in a row):`, err);
+    }
+    if (this.failures === FAIL_ALERT && this.onHealth) this.onHealth(false);
+  }
+
+  recovered() {
+    const was = this.failures;
+    this.failures = 0;
+    log.info(`clipboard polling recovered after ${was} failed ${was === 1 ? "poll" : "polls"}`);
+    if (was >= FAIL_ALERT && this.onHealth) this.onHealth(true);
   }
 }
 
-module.exports = { ClipboardWatcher, isPrivate, imageHash, loadSequenceNumber, IGNORE_FORMATS, HISTORY_FORMAT };
+module.exports = {
+  ClipboardWatcher, isPrivate, imageHash, loadSequenceNumber,
+  IGNORE_FORMATS, HISTORY_FORMAT, FAIL_ALERT,
+};

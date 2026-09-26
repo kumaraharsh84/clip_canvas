@@ -91,6 +91,8 @@ button.capture::before {
 }
 button.capture.paused { color: var(--warn); border-color: var(--warn); }
 button.capture.paused::before { background: var(--warn); }
+button.capture.error { color: var(--danger); border-color: var(--danger); }
+button.capture.error::before { background: var(--danger); }
 .spacer { flex: 1 1 auto; }
 
 #status {

@@ -150,20 +150,24 @@
   // ── Capture state ──────────────────────────────────────────────────────────
   async function loadCaptureState() {
     try {
-      const s = await api.capture.state();
-      setPausedUi(!!(s && s.paused));
+      setCaptureUi(await api.capture.state());
     } catch (_) {
       el.capture.hidden = true; // an older main process without the channel
     }
   }
 
-  function setPausedUi(p) {
-    paused = p;
-    el.capture.textContent = p ? "Capture paused" : "Capturing";
-    el.capture.classList.toggle("paused", p);
-    el.capture.title = p
-      ? "Nothing you copy is being saved. Click to resume."
-      : "Everything you copy is saved. Click to pause.";
+  /** { paused, error } from main: error means the clipboard cannot be read. */
+  function setCaptureUi(s) {
+    paused = !!(s && s.paused);
+    const error = !paused && !!(s && s.error);
+    el.capture.textContent = error ? "Capture error" : paused ? "Capture paused" : "Capturing";
+    el.capture.classList.toggle("paused", paused);
+    el.capture.classList.toggle("error", error);
+    el.capture.title = error
+      ? "ClipCanvas cannot read the clipboard right now. Tray menu → Open log file shows why."
+      : paused
+        ? "Nothing you copy is being saved. Click to resume."
+        : "Everything you copy is saved. Click to pause.";
   }
 
   // ── Info panel ─────────────────────────────────────────────────────────────
@@ -382,10 +386,9 @@
     el.today.addEventListener("click", () => tc.showToday(true));
 
     el.capture.addEventListener("click", async () => {
-      const s = await api.capture.setPaused(!paused);
-      setPausedUi(!!(s && s.paused));
+      setCaptureUi(await api.capture.setPaused(!paused));
     });
-    api.on("capture:changed", (s) => setPausedUi(!!(s && s.paused)));
+    api.on("capture:changed", setCaptureUi);
 
     el.emptyTrash.addEventListener("click", emptyTrash);
 
