@@ -27,7 +27,7 @@ const CHANNELS = [
   "clips:getPage", "clips:getAll", "clips:getSummaries", "clips:getById",
   "clips:getContent", "clips:search", "clips:update", "clips:delete",
   "clips:restore", "clips:archive", "clips:copyBack", "clips:trashSummary",
-  "clips:emptyTrash",
+  "clips:emptyTrash", "clips:dayCounts", "clips:forDays",
 
   // time canvas
   "time:getYears", "time:getMonths", "time:getDays", "time:getHours",
@@ -92,6 +92,8 @@ const api = {
     copyBack: (id) => safeInvoke("clips:copyBack", id),
     trashSummary: (opts) => safeInvoke("clips:trashSummary", opts),
     emptyTrash: (opts) => safeInvoke("clips:emptyTrash", opts),
+    dayCounts: (opts) => safeInvoke("clips:dayCounts", opts),
+    forDays: (opts) => safeInvoke("clips:forDays", opts),
   },
   storage: {
     stats: (opts) => safeInvoke("storage:getStats", opts),

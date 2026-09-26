@@ -301,6 +301,9 @@ function registerIpc() {
   handle("clips:trashSummary", (opts = {}) => db.getTrashSummary(withWorkspace(opts)));
   handle("clips:emptyTrash", (opts = {}) => db.emptyTrash(withWorkspace(opts)));
 
+  handle("clips:dayCounts", (opts = {}) => db.getDayCounts(withWorkspace(opts)));
+  handle("clips:forDays", (opts = {}) => db.getClipsForDays(withWorkspace(opts)));
+
   /**
    * Put a clip back on the clipboard. lastText/lastImageHash are updated first
    * so the watcher does not immediately re-capture what we just wrote and

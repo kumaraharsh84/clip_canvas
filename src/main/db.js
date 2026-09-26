@@ -29,6 +29,8 @@ const { categorize, CLASSIFIER_VERSION } = require("./classifyText");
 
 const SCHEMA_VERSION = 6;
 const SEARCH_LIMIT_MAX = 200; // matches the clamp the old searchClips applied
+const DAY_REQUEST_MAX_DAYS = 400;     // days per getClipsForDays call
+const DAY_REQUEST_MAX_CLIPS = 20000;  // clips per getClipsForDays call
 
 // Rebuilds a clip's search entry. Only on the columns the index reads: an
 // unqualified AFTER UPDATE fired on every star, pin, archive and category
@@ -166,9 +168,12 @@ class ClipDatabase {
         ON clips(workspace_id, deleted_at, is_archived, created_at, id);
       CREATE INDEX IF NOT EXISTS idx_clips_time_hierarchy
         ON clips(workspace_id, deleted_at, is_archived, year, month, day, hour);
+      CREATE INDEX IF NOT EXISTS idx_clips_day_category
+        ON clips(workspace_id, deleted_at, is_archived, year, month, day, category);
     `);
 
     this.migrateFts();
+    this.backfillTimeColumns();
     this.backfillCategories();
 
     const have = db.prepare("SELECT version FROM schema_version WHERE version = ?");
@@ -374,6 +379,60 @@ class ClipDatabase {
       ORDER BY c.created_at DESC, c.id DESC
       LIMIT ?
     `).all(...params, max).reverse().map(hydrate);
+  }
+
+  /**
+   * Clip counts per calendar day and category -- all the Time Canvas needs to
+   * draw the whole calendar without loading a single clip. `t0`/`t1` are the
+   * first and last created_at of the day (Unix seconds); `v` and `dv` change
+   * whenever a clip of that day is edited or trashed, so the canvas can tell
+   * which loaded days are stale.
+   */
+  getDayCounts(opts = {}) {
+    const { sql, params } = this.clipWhere(opts);
+    return this.db.prepare(`
+      SELECT c.year AS year, c.month AS month, c.day AS day,
+             COALESCE(c.category, c.type) AS category,
+             COUNT(*) AS n,
+             MIN(c.created_at) AS t0, MAX(c.created_at) AS t1,
+             MAX(COALESCE(c.updated_at, c.created_at)) AS v,
+             MAX(c.deleted_at) AS dv
+        FROM clips c ${sql} ${sql ? "AND" : "WHERE"} c.year IS NOT NULL
+       GROUP BY c.year, c.month, c.day, category
+    `).all(...params);
+  }
+
+  /**
+   * Full clips for a list of calendar days: `opts.days` is [{year, month, day}].
+   * Answers per day, and only whole days -- a day that would push the reply
+   * past DAY_REQUEST_MAX_CLIPS is left out rather than half-loaded, and the
+   * canvas asks for it again later.
+   */
+  getClipsForDays(opts = {}) {
+    const days = (Array.isArray(opts.days) ? opts.days : []).slice(0, DAY_REQUEST_MAX_DAYS);
+    const { sql, params } = this.clipWhere(opts);
+    const count = this.db.prepare(
+      `SELECT COUNT(*) AS n FROM clips c ${sql} ${sql ? "AND" : "WHERE"} c.year = ? AND c.month = ? AND c.day = ?`
+    );
+    const rows = this.db.prepare(`
+      SELECT c.* FROM clips c ${sql} ${sql ? "AND" : "WHERE"} c.year = ? AND c.month = ? AND c.day = ?
+       ORDER BY c.created_at ASC, c.id ASC
+       LIMIT ?
+    `);
+
+    const out = [];
+    let budget = DAY_REQUEST_MAX_CLIPS;
+    for (const d of days) {
+      const y = Number(d.year), m = Number(d.month), dd = Number(d.day);
+      const n = count.get(...params, y, m, dd).n;
+      // One pathological day bigger than the whole budget still loads, capped,
+      // so it can never be skipped forever.
+      if (n > budget && out.length) continue;
+      const clips = rows.all(...params, y, m, dd, DAY_REQUEST_MAX_CLIPS).map(hydrate);
+      out.push({ year: y, month: m, day: dd, clips, truncated: clips.length < n });
+      budget -= clips.length;
+    }
+    return out;
   }
 
   /**
