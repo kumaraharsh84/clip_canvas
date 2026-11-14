@@ -1,32 +1,28 @@
+// Prints what is on the clipboard right now: every type Electron lists, and
+// how many bytes each holds. Windows' own formats show up as
+//   electron application/osclipboard;format="<name>"
+// Reads only; prints sizes, never the content.
+//
+//   npx electron test/diagnostics/read_clipboard_formats.js
 const { app, clipboard } = require("electron");
 
-app.whenReady().then(() => {
-  console.log("=== CLIPBOARD FORMATS ===");
-  const formats = clipboard.availableFormats();
-  console.log("Available formats:", formats);
-  
-  for (const format of formats) {
-    try {
-      console.log(`Format: ${format}`);
-      const text = clipboard.read(format);
-      console.log(`  As string: "${text.slice(0, 100)}"`);
-    } catch (e) {
-      console.log(`  Failed to read: ${e.message}`);
+app.whenReady().then(async () => {
+  try {
+    const items = await clipboard.read();
+    console.log(`${items.length} item(s) on the clipboard`);
+    for (const item of items) {
+      for (const type of item.types) {
+        try {
+          const blob = await item.getType(type);
+          console.log(`  ${type}   ${blob.size} bytes`);
+        } catch (err) {
+          console.log(`  ${type}   not readable: ${err.message}`);
+        }
+      }
     }
+    console.log("text length:", (await clipboard.readText()).length);
+  } catch (err) {
+    console.error("could not read the clipboard:", err.message);
   }
-  
-  // Try to read standard format for file paths on Windows (FileNameW is standard Unicode buffer)
-  if (formats.includes("FileNameW")) {
-    const buf = clipboard.readBuffer("FileNameW");
-    console.log("FileNameW buffer length:", buf.length);
-    // FileNameW is null-terminated UTF-16LE string(s)
-    const str = buf.toString("utf16le").replace(/\0+$/, "");
-    console.log("FileNameW value:", str);
-  }
-  
-  if (formats.includes("text/uri-list")) {
-    console.log("text/uri-list value:", clipboard.read("text/uri-list"));
-  }
-
   app.exit(0);
 });

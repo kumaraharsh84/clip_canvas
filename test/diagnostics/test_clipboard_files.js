@@ -1,78 +1,64 @@
+// Experiment: the paths of files copied in Explorer, three ways. Copy a file
+// or two in Explorer, then run this. It is the starting point for capturing
+// copied files, which ClipCanvas does not do yet.
+//
+//   npx electron test/diagnostics/test_clipboard_files.js
 const { app, clipboard } = require("electron");
 const { execSync } = require("child_process");
 
-app.whenReady().then(() => {
-  console.log("=== TESTING ROBUST FILE EXTRACTION ===");
-  
+const osFormat = (name) => `electron application/osclipboard;format="${name}"`;
+
+/** The bytes of one type on the clipboard, or null when it is not there. */
+async function bytesOf(items, type) {
+  for (const item of items) {
+    const found = item.types.find((t) => t.toLowerCase() === type.toLowerCase());
+    if (found) return Buffer.from(await (await item.getType(found)).arrayBuffer());
+  }
+  return null;
+}
+
+app.whenReady().then(async () => {
   let files = [];
-  
-  // Method 1: PowerShell (most reliable on Windows)
+  const items = await clipboard.read();
+
+  // 1. PowerShell: the most reliable on Windows, and the slowest.
   if (process.platform === "win32") {
     try {
-      console.log("Method 1: Executing PowerShell...");
       const stdout = execSync(
         'powershell -NoProfile -Command "Get-Clipboard -Format FileDropList | Select-Object -ExpandProperty FullName"',
-        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
       );
-      const psFiles = stdout.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-      console.log("  PowerShell found files:", psFiles);
-      if (psFiles.length > 0) files = psFiles;
+      const found = stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      console.log("1. PowerShell:", found);
+      if (found.length) files = found;
     } catch (err) {
-      console.error("  PowerShell failed:", err.message);
-    }
-  }
-  
-  // Method 2: FileNameW buffer
-  if (files.length === 0 && process.platform === "win32") {
-    try {
-      console.log("Method 2: Reading FileNameW buffer...");
-      const buffer = clipboard.readBuffer("FileNameW");
-      console.log("  Buffer length:", buffer.length);
-      if (buffer.length > 0) {
-        const str = buffer.toString("utf16le");
-        // FileNameW can contain multiple null-separated paths
-        const fnwFiles = str.split("\0").filter(Boolean);
-        console.log("  FileNameW found files:", fnwFiles);
-        if (fnwFiles.length > 0) files = fnwFiles;
-      }
-    } catch (err) {
-      console.error("  FileNameW failed:", err.message);
-    }
-  }
-  
-  // Method 3: text/uri-list
-  if (files.length === 0) {
-    try {
-      console.log("Method 3: Reading text/uri-list...");
-      const uriList = clipboard.read("text/uri-list");
-      console.log("  uriList raw value:", JSON.stringify(uriList));
-      if (uriList) {
-        const uriFiles = uriList.split(/\r?\n/)
-          .map(line => line.trim())
-          .filter(line => line.startsWith("file://"))
-          .map(line => {
-            try {
-              // Clean file:// URLs
-              let decoded = decodeURIComponent(line);
-              decoded = decoded.replace(/^file:\/\/\/?/, "");
-              if (process.platform === "win32" && !/^[a-zA-Z]:/.test(decoded)) {
-                // If it starts with a slash like /C:/path, strip the leading slash
-                if (decoded.startsWith("/")) decoded = decoded.slice(1);
-              }
-              return decoded;
-            } catch (e) {
-              return line;
-            }
-          });
-        console.log("  uri-list found files:", uriFiles);
-        if (uriFiles.length > 0) files = uriFiles;
-      }
-    } catch (err) {
-      console.error("  uri-list failed:", err.message);
+      console.log("1. PowerShell failed:", err.message);
     }
   }
 
-  console.log("=== FINAL RESOLVED FILES ===");
-  console.log(files);
+  // 2. FileNameW: null-separated UTF-16 paths.
+  try {
+    const buffer = await bytesOf(items, osFormat("FileNameW"));
+    const found = buffer ? buffer.toString("utf16le").split("\0").filter(Boolean) : [];
+    console.log("2. FileNameW:", found);
+    if (!files.length) files = found;
+  } catch (err) {
+    console.log("2. FileNameW failed:", err.message);
+  }
+
+  // 3. text/uri-list: file:// URLs.
+  try {
+    const buffer = await bytesOf(items, "text/uri-list");
+    const found = (buffer ? buffer.toString("utf8") : "").split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("file://"))
+      .map((line) => decodeURIComponent(line).replace(/^file:\/\/\/?/, ""));
+    console.log("3. text/uri-list:", found);
+    if (!files.length) files = found;
+  } catch (err) {
+    console.log("3. text/uri-list failed:", err.message);
+  }
+
+  console.log("resolved:", files);
   app.exit(0);
 });
