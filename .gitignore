@@ -11,6 +11,11 @@ data/
 # Local tooling
 .claude/
 
+# Private working notes: a session log and a personal usage log. They hold
+# local paths and what was looked for in the clipboard history.
+SESSION-NOTES.md
+07_Evidence.md
+
 # Written by test/ scripts. Screenshots from verify-app.js --shots show your
 # real clipboard history, so they must never be committed.
 out/
