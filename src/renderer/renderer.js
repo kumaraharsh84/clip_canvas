@@ -22,6 +22,8 @@
   const { mountTimeCanvas, mountTimelineStrip } = window.ClipCanvasTimeCanvas;
   const api = window.api;
 
+  const THUMB_WIDTH = 512; // as in src/main/images.js
+
   const $ = (id) => document.getElementById(id);
   const el = {
     workspace: $("workspace"), board: $("board"), filter: $("filter"),
@@ -58,11 +60,14 @@
       onFrame,
       onHover: (node) => { hovered = node; scheduleInfo(); },
       // Assets are served by the clip-asset:// handler registered in main.js,
-      // which resolves only inside the storage folder.
-      resolveImage: (clip) =>
-        clip.asset_path
-          ? "clip-asset://" + String(clip.asset_path).replace(/\\/g, "/")
-          : clip.content,
+      // which resolves only inside the storage folder. Up to THUMB_WIDTH the
+      // thumbnail saved at capture is enough; the full picture is asked for
+      // above that, and stands in if the thumbnail has gone missing.
+      resolveImage: (clip, size) => {
+        if (!clip.asset_path) return clip.content;
+        const full = assetUrl(clip.asset_path);
+        return clip.thumbnail_path && size <= THUMB_WIDTH ? [assetUrl(clip.thumbnail_path), full] : full;
+      },
     });
     mountTimelineStrip(el.timeline, tc);
     tc.onData(onData);
@@ -263,7 +268,7 @@
     if (clip.type === "image" && clip.asset_path) {
       const img = document.createElement("img");
       img.alt = "clip " + clip.id;
-      img.src = "clip-asset://" + String(clip.asset_path).replace(/\\/g, "/");
+      img.src = assetUrl(clip.asset_path);
       el.dBody.replaceChildren(img);
     } else {
       const pre = document.createElement("pre");
@@ -478,6 +483,10 @@
     return d.toLocaleString(undefined, {
       day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit",
     });
+  }
+
+  function assetUrl(rel) {
+    return "clip-asset://" + String(rel).replace(/\\/g, "/");
   }
 
   function oneLine(c) {

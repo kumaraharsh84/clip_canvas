@@ -1,7 +1,8 @@
 // ─── test/verify-db.js ────────────────────────────────────────────────────
-// Checks for src/main/db.js: the v6 and v7 migrations, the queries the Time
-// Canvas loads through, and that the ones which run on every copy are answered
-// from an index rather than by reading every clip.
+// Checks for src/main/db.js: the migrations since v5, the queries the Time
+// Canvas loads through, that the ones which run on every copy are answered
+// from an index rather than by reading every clip, and the bookkeeping for
+// stored images (one file for identical pictures, thumbnails still to make).
 //
 // better-sqlite3 is built for Electron's Node, so this runs under Electron:
 //   npm run test:db                         (electron test/verify-db.js)
@@ -124,8 +125,8 @@ function run() {
     ok("update trigger now fires only on indexed columns", /AFTER\s+UPDATE\s+OF/i.test(trig));
     const missing = db2.db.prepare("SELECT COUNT(*) n FROM clips WHERE category IS NULL OR category_v <> ?").get(CLASSIFIER_VERSION).n;
     ok("every clip got a category", missing === 0, `${missing} missing`);
-    ok("schema versions 6 and 7 recorded",
-       db2.db.prepare("SELECT COUNT(*) n FROM schema_version WHERE version IN (6, 7)").get().n === 2);
+    ok("schema versions 6, 7 and 8 recorded",
+       db2.db.prepare("SELECT COUNT(*) n FROM schema_version WHERE version IN (6, 7, 8)").get().n === 3);
     const idx = db2.db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_clips_day_%'").all().map((r) => r.name);
     ok("the day-count index replaced the older one", idx.join() === "idx_clips_day_counts", idx.join(", "));
 
@@ -212,7 +213,55 @@ function run() {
     db.close();
   }
 
-  // ── 6. Optional: a copy of the real database ──────────────────────────────
+  // ── 6. Stored images ──────────────────────────────────────────────────────
+  console.log("\n-- stored images --");
+  {
+    const db = fresh("images");
+    const ws = db.listWorkspaces()[0].id;
+    const store = path.join(TMP, "images-storage");
+    const on = (rel) => fs.existsSync(path.join(store, rel));
+    const put = (rel) => {
+      fs.mkdirSync(path.dirname(path.join(store, rel)), { recursive: true });
+      fs.writeFileSync(path.join(store, rel), "x");
+    };
+    const image = (hash, rel, thumb) => db.addClip({
+      type: "image", content: null, workspace_id: ws, asset_hash: hash,
+      asset_path: rel, thumbnail_path: thumb, file_size_bytes: 10,
+    });
+    for (const rel of ["images/a.png", "thumbs/a.png", "images/b.png"]) put(rel);
+    const a1 = image("hash-a", "images/a.png", "thumbs/a.png");
+    const a2 = image("hash-a", "images/a.png", "thumbs/a.png");
+    const b = image("hash-b", "images/b.png", null);
+
+    const twin = db.findImageByHash("hash-a");
+    ok("a stored picture is found by its pixels",
+       !!twin && twin.asset_path === "images/a.png" && twin.thumbnail_path === "thumbs/a.png", JSON.stringify(twin));
+    ok("an unknown picture is not", db.findImageByHash("hash-z") === null);
+    const twinPlan = plansOf(db, () => db.findImageByHash("hash-a"));
+    ok("found through the hash index", /idx_clips_asset_hash/.test(twinPlan[0]), twinPlan[0]);
+
+    const sig = () => JSON.stringify(db.getDayCounts({ workspaceId: ws }).map((r) => [r.n, r.v, r.dv]));
+    const before = sig();
+    const next = db.nextImageWithoutThumbnail();
+    ok("the image with no thumbnail yet is next in line", !!next && next.id === b.id);
+    const todoPlan = plansOf(db, () => db.nextImageWithoutThumbnail());
+    ok("found through the to-do index", /idx_clips_thumb_todo/.test(todoPlan[0]), todoPlan[0]);
+    db.setThumbnail(b.id, "");
+    ok("once decided -- even as 'needs none' -- it is not", db.nextImageWithoutThumbnail() === null);
+    ok("recording a thumbnail does not mark the day as changed", sig() === before);
+
+    db.deleteClips([a1.id, b.id]);
+    const first = db.emptyTrash({ workspaceId: ws });
+    ok("emptying Trash keeps a picture another clip still uses",
+       on("images/a.png") && on("thumbs/a.png") && !on("images/b.png") && first.removed === 2, JSON.stringify(first));
+    db.deleteClips([a2.id]);
+    const second = db.emptyTrash({ workspaceId: ws });
+    ok("and removes it with the last clip that used it",
+       !on("images/a.png") && !on("thumbs/a.png") && second.filesRemoved === 2, JSON.stringify(second));
+    db.close();
+  }
+
+  // ── 7. Optional: a copy of the real database ──────────────────────────────
   if (process.argv.includes("--live")) {
     console.log("\n-- a copy of your database --");
     const appData = process.env.APPDATA || path.join(os.homedir(), ".config");

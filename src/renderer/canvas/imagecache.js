@@ -22,7 +22,9 @@ class ImageCache {
   /**
    * @param {object}   opts
    * @param {function} opts.onReady  called when a decode lands (request a repaint)
-   * @param {function} opts.resolve  clip -> image URL/path. Defaults to asset_path.
+   * @param {function} opts.resolve  (clip, size) -> image URL, or a list of URLs
+   *                                 to try in order (a thumbnail, then the full
+   *                                 picture). Defaults to asset_path.
    */
   constructor({ onReady = null, resolve = null, budgetBytes = DEFAULT_BUDGET } = {}) {
     this.onReady = onReady;
@@ -84,13 +86,12 @@ class ImageCache {
 
   async decode({ clip, size, key }) {
     try {
-      const src = this.resolve(clip);
-      if (!src) { this.failed.add(key); return; }
-
-      const blob = await fetch(src).then((r) => {
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        return r.blob();
-      });
+      let blob = null;
+      for (const src of [].concat(this.resolve(clip, size) || [])) {
+        blob = await fetch(src).then((r) => (r.ok ? r.blob() : null), () => null);
+        if (blob) break;
+      }
+      if (!blob) { this.failed.add(key); return; }
 
       // createImageBitmap does the downscale off the main thread.
       const bmp = await createImageBitmap(blob, {

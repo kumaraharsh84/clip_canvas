@@ -36,6 +36,8 @@ const { registerAssetScheme, handleAssetProtocol } = require("../src/main/assetP
 const hotkeys = require("../src/main/hotkey");
 const { ipcHandlers, registerIpc: registerHandlers } = require("../src/main/ipc");
 const { seedDatabase } = require("./seed-db");
+const { imageHash } = require("../src/main/clipwatch");
+const { THUMB_WIDTH, thumbPathFor, storeImage, ThumbnailBackfill } = require("../src/main/images");
 
 const argv = process.argv.slice(2);
 const flag = (n, d) => {
@@ -398,14 +400,23 @@ app.whenReady().then(async () => {
     storageDir = path.join(tmpDir, "storage");
     db = new ClipDatabase(dbPath, storageDir);
     const seeded = seedDatabase(db, storageDir, { nativeImage });
-    console.log(`[verify] synthetic database: ${seeded.clips} clips, ${seeded.images} of them images`);
+    // The seed stores pictures only, as a database from before thumbnails
+    // would have them; this is the app's own catching-up, run to the end.
+    const backfill = new ThumbnailBackfill({ db, storageDir, nativeImage });
+    while (backfill.step());
+    console.log(`[verify] synthetic database: ${seeded.clips} clips, ${seeded.images} of them images, ` +
+                `${backfill.made} thumbnails made`);
   } else {
     dbPath = copyDb();
     storageDir = LIVE_STORE;
     console.log("[verify] copied database ->", path.basename(dbPath));
     db = new ClipDatabase(dbPath, storageDir);
   }
-  handleAssetProtocol(protocol, storageDir);
+  // The app's handler, with a note of what the window asked it for.
+  const requested = [];
+  handleAssetProtocol({
+    handle: (scheme, fn) => protocol.handle(scheme, (request) => { requested.push(request.url); return fn(request); }),
+  }, storageDir);
 
   const all = db.listWorkspaces();
   const target = all.find((w) => w.clip_count > 0) || all[0];
@@ -536,6 +547,11 @@ app.whenReady().then(async () => {
          `${h.imageCache.entries} decoded, ${h.imageCache.failed} failed`);
       ok("thumbnails drawn on cards", h.frame.thumbs > 0, `${h.frame.thumbs} drawn`);
     }
+    if (SYNTHETIC) {
+      const small = requested.filter((u) => u.startsWith("clip-asset://thumbs/")).length;
+      ok("the canvas asks for saved thumbnails, not only full pictures", small > 0,
+         `${small} of ${requested.length} requests`);
+    }
     info(`level ${h.frame.level} · ${h.frame.cards} cards · lines ${h.frame.linesDrawn}/${h.frame.linesTotal}`);
     await shot("hour");
 
@@ -570,6 +586,49 @@ app.whenReady().then(async () => {
     try { new ClipboardWatcher({ clipboard, onText() {}, onImage() {}, sequence: null }); } catch (e) { err = e; }
     ok("the clipboard watcher can run on Electron " + process.versions.electron, !err, err ? err.message : "");
     ok("readText answers synchronously", typeof clipboard.readText() === "string");
+  }
+
+  // ── Storing images: the app's own code, on a folder of its own ─────────
+  console.log("\n-- storing images --");
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clipcanvas-verify-images-"));
+    const store = path.join(dir, "storage");
+    const idb = new ClipDatabase(path.join(dir, "images.db"), store);
+    const wsId = idb.listWorkspaces()[0].id;
+    const picture = (w, h, fill) => nativeImage.createFromBitmap(Buffer.alloc(w * h * 4, fill), { width: w, height: h });
+    const filesIn = (sub) => {
+      const base = path.join(store, sub);
+      return fs.existsSync(base) ? fs.readdirSync(base, { recursive: true }).filter((f) => String(f).endsWith(".png")).length : 0;
+    };
+    const keep = (img) => storeImage({ db: idb, storageDir: store, img, hash: imageHash(img), workspaceId: wsId });
+
+    const wide = picture(1280, 720, 200);
+    const c1 = keep(wide);
+    const thumb = nativeImage.createFromPath(path.join(store, c1.thumbnail_path || "none"));
+    ok("a wide image is stored with a thumbnail " + THUMB_WIDTH + " px wide",
+       fs.existsSync(path.join(store, c1.asset_path)) && !thumb.isEmpty() && thumb.getSize().width === THUMB_WIDTH,
+       `${c1.asset_path} + ${c1.thumbnail_path}`);
+    const c2 = keep(wide);
+    ok("the same picture copied again is a second clip, not a second file",
+       c2.id !== c1.id && c2.asset_path === c1.asset_path && filesIn("images") === 1 && filesIn("thumbs") === 1,
+       `${filesIn("images")} picture, ${filesIn("thumbs")} thumbnail`);
+    const c3 = keep(picture(300, 200, 90));
+    ok("a narrow image needs no thumbnail", c3.thumbnail_path === "" && filesIn("images") === 2 && filesIn("thumbs") === 1);
+
+    // As a database from before thumbnails has them: none recorded, none on disk.
+    fs.rmSync(path.join(store, c1.thumbnail_path));
+    for (const c of [c1, c2]) idb.setThumbnail(c.id, null);
+    const lost = idb.addClip({ type: "image", content: null, workspace_id: wsId, asset_path: "images/gone.png" });
+    const backfill = new ThumbnailBackfill({ db: idb, storageDir: store, nativeImage });
+    let steps = 0;
+    while (backfill.step()) steps++;
+    const row = (id) => idb.getClipById(id).thumbnail_path;
+    ok("the catching-up makes a missing thumbnail once, for every clip of that picture",
+       backfill.made === 1 && row(c1.id) === thumbPathFor(c1.asset_path) && row(c2.id) === row(c1.id) && filesIn("thumbs") === 1,
+       `${steps} images looked at, ${backfill.made} thumbnail made`);
+    ok("a picture that cannot be read is given up on, not tried for ever", row(lost.id) === "" && steps === 3);
+    idb.close();
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }
 
   // ── The Settings window ────────────────────────────────────────────────

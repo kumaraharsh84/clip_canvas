@@ -41,7 +41,8 @@ const BASE_MAX_ZOOM = 8;
  * @param {function}    opts.onSelect     (clipOrNull, node) => void
  * @param {function}    opts.onHover      (nodeOrNull) => void
  * @param {function}    opts.onFrame      (stats) => void
- * @param {function}    opts.resolveImage (clip) => url for a thumbnail
+ * @param {function}    opts.resolveImage (clip, size) => URL of a picture at least
+ *                                        `size` px wide, or URLs to try in order
  */
 function mountTimeCanvas(host, opts = {}) {
   const canvas = document.createElement("canvas");

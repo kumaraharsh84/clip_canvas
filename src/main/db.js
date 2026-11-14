@@ -35,7 +35,7 @@ const fs = require("fs");
 const Database = require("better-sqlite3");
 const { categorize, CLASSIFIER_VERSION } = require("./classifyText");
 
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 const SEARCH_LIMIT_MAX = 200; // matches the clamp the old searchClips applied
 const DAY_REQUEST_MAX_DAYS = 400;     // days per getClipsForDays call
 const DAY_REQUEST_MAX_CLIPS = 20000;  // clips per getClipsForDays call
@@ -185,6 +185,18 @@ class ClipDatabase {
     // counts never touch the table. It replaces idx_clips_day_category, which
     // had the same leading columns but not the times.
     db.exec("DROP INDEX IF EXISTS idx_clips_day_category");
+
+    // v8: stored images (images.js). Both are partial indexes, so they hold
+    // image rows only: one finds a picture already stored by its pixels, the
+    // other lists the images whose thumbnail has not been decided yet and
+    // empties itself as they are.
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_clips_asset_hash
+        ON clips(asset_hash, asset_path, thumbnail_path) WHERE asset_hash IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_clips_thumb_todo
+        ON clips(id, asset_path)
+        WHERE type = 'image' AND asset_path IS NOT NULL AND thumbnail_path IS NULL;
+    `);
 
     this.migrateFts();
     this.backfillTimeColumns();
@@ -598,26 +610,66 @@ class ClipDatabase {
   }
 
   /**
-   * Permanently remove trashed rows, deleting their assets first. Asset removal
-   * is best-effort: a missing or locked file must not leave the row behind,
-   * because a row whose asset is gone is worse than an orphan file.
+   * Permanently remove trashed rows, then the files only they used. A picture
+   * can belong to several clips (images.js stores identical ones once), so a
+   * file goes only when no remaining clip points at it. Removal is
+   * best-effort: a missing or locked file is left behind, never the row.
    */
   emptyTrash({ workspaceId } = {}) {
     const where = "WHERE deleted_at IS NOT NULL" + (workspaceId ? " AND workspace_id = ?" : "");
     const params = workspaceId ? [workspaceId] : [];
     const rows = this.db.prepare(
-      `SELECT id, asset_path, thumbnail_path FROM clips ${where}`
+      `SELECT asset_path, thumbnail_path, asset_hash FROM clips ${where}`
     ).all(...params);
+    const info = this.db.prepare(`DELETE FROM clips ${where}`).run(...params);
 
+    // Clips share a file only when they share its hash, so the index on
+    // asset_hash answers "does anyone still use it" without reading the table.
+    const stillUsed = this.db.prepare(
+      "SELECT 1 FROM clips WHERE asset_hash = ? AND (asset_path = ? OR thumbnail_path = ?) LIMIT 1"
+    );
+    const done = new Set();
     let filesRemoved = 0;
     for (const r of rows) {
       for (const rel of [r.asset_path, r.thumbnail_path]) {
-        if (!rel) continue;
+        if (!rel || done.has(rel)) continue;
+        done.add(rel);
+        if (r.asset_hash && stillUsed.get(r.asset_hash, rel, rel)) continue;
         try { fs.unlinkSync(path.join(this.storageDir, rel)); filesRemoved++; } catch (_) {}
       }
     }
-    const info = this.db.prepare(`DELETE FROM clips ${where}`).run(...params);
     return { removed: info.changes, filesRemoved };
+  }
+
+  // ── Stored images (images.js) ──────────────────────────────────────────────
+  /** A stored picture with these pixels, newest first, or null. */
+  findImageByHash(hash) {
+    return this.db.prepare(`
+      SELECT asset_path, thumbnail_path, file_size_bytes FROM clips
+       WHERE asset_hash = ? AND asset_path IS NOT NULL
+       ORDER BY id DESC LIMIT 1
+    `).get(hash) || null;
+  }
+
+  /**
+   * The newest image whose thumbnail has not been decided: thumbnail_path is
+   * NULL. ("" means it needs none.) The WHERE must stay word for word that of
+   * idx_clips_thumb_todo, or SQLite will not use it.
+   */
+  nextImageWithoutThumbnail() {
+    return this.db.prepare(`
+      SELECT id, asset_path FROM clips
+       WHERE type = 'image' AND asset_path IS NOT NULL AND thumbnail_path IS NULL
+       ORDER BY id DESC LIMIT 1
+    `).get() || null;
+  }
+
+  /**
+   * Record a thumbnail ("" for none). updated_at is left alone on purpose: the
+   * clip itself did not change, and its day need not be loaded again.
+   */
+  setThumbnail(id, rel) {
+    this.db.prepare("UPDATE clips SET thumbnail_path = ? WHERE id = ?").run(rel, id);
   }
 
   // ── Storage figures ────────────────────────────────────────────────────────

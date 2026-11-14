@@ -24,13 +24,13 @@ const {
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const crypto = require("crypto");
 
 const { ClipDatabase } = require("./db");
 const { registerAssetScheme, handleAssetProtocol } = require("./assetProtocol");
 // Stored type of a captured clip -- shares its rules with what the canvas shows.
 const { classify } = require("./classifyText");
 const { ClipboardWatcher } = require("./clipwatch");
+const { storeImage, ThumbnailBackfill } = require("./images");
 const { Settings } = require("./settings");
 const log = require("./log");
 const hotkeys = require("./hotkey");
@@ -45,6 +45,7 @@ let tray = null;
 let db = null;
 let storageDir = null;
 let watcher = null;
+let thumbs = null;          // makes thumbnails for images stored before there were any
 let settings = null;
 let captureError = false; // the watcher cannot read the clipboard (see log.js)
 let settingsWin = null;
@@ -112,6 +113,11 @@ function start() {
   chooseHotkey(settings.get("hotkey"));
   createTray();
   startClipboardWatcher();
+  thumbs = new ThumbnailBackfill({
+    db, storageDir, nativeImage,
+    onError: (file, err) => log.warn("no thumbnail for", file + ":", err.message),
+  });
+  thumbs.start();
   // `npm run dev -- --settings` opens Settings straight away, for working on it.
   if (IS_DEV && process.argv.includes("--settings")) openSettings();
 
@@ -127,6 +133,7 @@ app.on("will-quit", () => {
   log.info("quitting");
   globalShortcut.unregisterAll();
   if (watcher) watcher.stop();
+  if (thumbs) thumbs.stop();
   if (db) db.close();
 });
 
@@ -410,8 +417,7 @@ function createWatcher() {
     clipboard,
     intervalMs: POLL_MS,
     onText: captureText,
-    // PNG is encoded only here, once per captured image -- never to check.
-    onImage: (img, hash) => captureImage(img.toPNG(), hash, img.getSize()),
+    onImage: captureImage,
     onHealth: (ok) => {
       captureError = !ok;
       if (ok) log.info("capture is working again");
@@ -435,31 +441,9 @@ function captureText(text) {
   broadcast("clip:added", clip);
 }
 
-function captureImage(png, hash, size) {
-  const now = new Date();
-  const rel = path.join(
-    "images",
-    String(now.getFullYear()),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    `img-${crypto.randomUUID()}.png`
-  ).replace(/\\/g, "/");
-
-  const full = path.join(storageDir, rel);
-  fs.mkdirSync(path.dirname(full), { recursive: true });
-  fs.writeFileSync(full, png);
-
-  const clip = db.addClip({
-    type: "image",
-    content: null,
-    workspace_id: activeWorkspaceId,
-    source: "clipboard",
-    storage_mode: "local",
-    asset_path: rel,
-    asset_hash: hash,
-    mime_type: "image/png",
-    file_size_bytes: png.length,
-    title: `Image ${size.width}x${size.height}`,
-  });
+/** The picture, its thumbnail and the clip row: images.js. */
+function captureImage(img, hash) {
+  const clip = storeImage({ db, storageDir, img, hash, workspaceId: activeWorkspaceId });
   broadcast("clip:added", clip);
 }
 
