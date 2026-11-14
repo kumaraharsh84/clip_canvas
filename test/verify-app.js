@@ -195,6 +195,9 @@ const OVERVIEW = `(async () => {
     status: document.getElementById("status").textContent,
     hud: document.getElementById("hud").textContent,
     workspaces: Array.from(document.getElementById("workspace").options).map((o) => o.textContent),
+    workspaceShown: !document.getElementById("workspace").parentElement.hidden,
+    boardShown: !document.getElementById("board").parentElement.hidden,
+    boards: document.getElementById("board").options.length - 1,
     legend: document.querySelectorAll("#legend .chip").length,
     timeline: !!document.querySelector("#timeline canvas.timeline-strip"),
     info: document.getElementById("info-title").textContent,
@@ -488,6 +491,10 @@ app.whenReady().then(async () => {
     ok("timeline strip mounted", o.timeline);
     ok("info panel populated", !!o.info.trim(), JSON.stringify(o.info.trim()));
     ok("workspaces populated", o.workspaces.length > 0, o.workspaces.join(" | "));
+    ok("the workspace and board controls show only when there is a choice",
+       o.workspaceShown === (o.workspaces.length > 1) && o.boardShown === (o.boards > 0),
+       `${o.workspaces.length} workspaces, ${o.boards} boards`);
+    ok("the readout says where the zoom is, without draw timings", /[0-9]+%/.test(o.hud) && !/draw|textures/.test(o.hud), o.hud);
     ok("DOM stays small (canvas, not DOM nodes)", o.domNodes < 260, o.domNodes + " nodes");
     ok("the logo shows in the top bar", o.logo > 0, o.logo + " px");
     info(o.hud);

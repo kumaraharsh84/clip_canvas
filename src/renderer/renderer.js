@@ -51,6 +51,8 @@
   let hits = [];
   let activeHit = -1;
   let paused = false;
+  let dev = false; // a development run (npm run dev): the readout shows draw timings too
+  let hudText = "";
 
   init().catch(fatal);
 
@@ -77,7 +79,7 @@
     window.__tc = tc;
 
     wireEvents();
-    await Promise.all([loadWorkspaces(), loadCaptureState()]);
+    await Promise.all([loadWorkspaces(), loadCaptureState(), loadDevFlag()]);
     // The app opens on today: the current day is the working place, and the
     // rest of history is one zoom-out away (planning/chat-decisions.md).
     await tc.setSource(makeSource(), { view: "today" });
@@ -158,6 +160,14 @@
     return n;
   }
 
+  async function loadDevFlag() {
+    try {
+      dev = !!(await api.settings.get()).dev;
+    } catch (_) {
+      dev = false;
+    }
+  }
+
   // ── Capture state ──────────────────────────────────────────────────────────
   async function loadCaptureState() {
     try {
@@ -236,9 +246,15 @@
 
   function onFrame(s) {
     if (!hovered && !selectedNode) scheduleInfo(); // the camera moved
-    el.hud.textContent =
-      `draw ${s.ms.toFixed(1)} ms · ${s.level} ${s.zoomLabel} · ${s.cards} cards · ` +
-      `${s.loadedDays} days loaded (${s.loadedClips} clips) · ${s.textures} textures`;
+    // Where the zoom is, on the roadmap's ladder (500% years ... 100% clips).
+    // A development run adds what the frame cost.
+    const text = dev
+      ? `draw ${s.ms.toFixed(1)} ms · ${s.level} ${s.zoomLabel} · ${s.cards} cards · ` +
+        `${s.loadedDays} days loaded (${s.loadedClips} clips) · ${s.textures} textures`
+      : `${s.level} · ${s.zoomLabel}`;
+    // Written only when it changes: outside dev runs that is once per level,
+    // not once per frame.
+    if (text !== hudText) el.hud.textContent = hudText = text;
   }
 
   // ── Selection / details ────────────────────────────────────────────────────
