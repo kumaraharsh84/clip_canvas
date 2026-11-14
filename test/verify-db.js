@@ -17,7 +17,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 
-const { ClipDatabase } = require("../src/main/db");
+const { ClipDatabase, SEARCH_RECENT_MATCHES } = require("../src/main/db");
 const { categorize, CLASSIFIER_VERSION } = require("../src/main/classifyText");
 const { categoryOf } = require("../src/renderer/canvas/classify");
 
@@ -265,7 +265,41 @@ function run() {
     db.close();
   }
 
-  // ── 7. Optional: a copy of the real database ──────────────────────────────
+  // ── 7. Search stays bounded on a broad query ──────────────────────────────
+  console.log("\n-- search --");
+  {
+    const db = fresh("search");
+    const ws = db.listWorkspaces()[0].id;
+    const extra = 300;
+    const ids = [];
+    db.db.transaction(() => {
+      ids.push(db.addClip({ type: "text", content: "plain note with a rareword in it", workspace_id: ws }).id);
+      for (let i = 0; i < SEARCH_RECENT_MATCHES + extra; i++) {
+        ids.push(db.addClip({ type: "text", content: "plain note number " + i, workspace_id: ws }).id);
+      }
+    })();
+    const floor = ids[ids.length - SEARCH_RECENT_MATCHES]; // the oldest of the newest matches
+
+    const rare = db.searchClips({ query: "rareword", workspaceId: ws });
+    ok("a query with few matches is ranked in full: the oldest clip is found", rare.length === 1 && rare[0].id === ids[0]);
+
+    const broad = db.searchClips({ query: "plain", workspaceId: ws });
+    ok("a query matching more than " + SEARCH_RECENT_MATCHES + " clips still fills the list", broad.length === 200);
+    ok("and is ranked among the newest " + SEARCH_RECENT_MATCHES + " of them", broad.every((c) => c.id >= floor),
+       `ids ${Math.min(...broad.map((c) => c.id))}..${Math.max(...broad.map((c) => c.id))}, floor ${floor}`);
+    const prefix = db.searchClips({ query: "pl", workspaceId: ws });
+    ok("so does a prefix typed so far", prefix.length === 200 && prefix.every((c) => c.id >= floor));
+
+    // The newest matches go to Trash: the list must be filled from older ones.
+    db.deleteClips(ids.filter((id) => id >= floor));
+    const older = db.searchClips({ query: "plain", workspaceId: ws });
+    ok("when the newest matches are in Trash, older ones are found instead",
+       older.length === 200 && older.every((c) => c.id < floor), `${older.length} results`);
+    ok("a malformed query is answered, not thrown", Array.isArray(db.searchClips({ query: '"', workspaceId: ws })));
+    db.close();
+  }
+
+  // ── 8. Optional: a copy of the real database ──────────────────────────────
   if (process.argv.includes("--live")) {
     console.log("\n-- a copy of your database --");
     const appData = process.env.APPDATA || path.join(os.homedir(), ".config");

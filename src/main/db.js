@@ -36,7 +36,8 @@ const Database = require("better-sqlite3");
 const { categorize, CLASSIFIER_VERSION } = require("./classifyText");
 
 const SCHEMA_VERSION = 8;
-const SEARCH_LIMIT_MAX = 200; // matches the clamp the old searchClips applied
+const SEARCH_LIMIT_MAX = 200;       // results per search
+const SEARCH_RECENT_MATCHES = 1000; // a query matching more clips than this is ranked among its newest
 const DAY_REQUEST_MAX_DAYS = 400;     // days per getClipsForDays call
 const DAY_REQUEST_MAX_CLIPS = 20000;  // clips per getClipsForDays call
 const RECENT_ROWS = 16;               // newest rows findRecentDuplicate looks at
@@ -455,9 +456,14 @@ class ClipDatabase {
 
   // ── Search ─────────────────────────────────────────────────────────────────
   /**
-   * FTS5 search. The limit is clamped to 200, which v1's benchmark-renderer.js notes
-   * as the behaviour the June baseline predates -- keep it, the renderer's
-   * result list is built around it.
+   * Full-text search, best matches first, at most SEARCH_LIMIT_MAX of them.
+   *
+   * A broad query -- "t", "the" -- matches most of the history, and ranking
+   * means scoring every match: a second per keystroke at 30,000 clips. So
+   * when a query matches more than SEARCH_RECENT_MATCHES clips, only the
+   * newest that many are ranked. A query that matches fewer is ranked in
+   * full, exactly as before. Either way the cost no longer grows with the
+   * history.
    */
   searchClips(opts = {}) {
     const raw = String(opts.query || opts.q || "").trim();
@@ -471,15 +477,29 @@ class ClipDatabase {
     if (!opts.includeArchived) where.push("c.is_archived = 0");
 
     try {
-      return this.db.prepare(`
+      const match = ftsQuery(raw);
+      // The id of the SEARCH_RECENT_MATCHES-th newest match, if there are that
+      // many. fts5 walks matches in id order without scoring them, so this
+      // stops early.
+      const oldest = this.db.prepare(`
+        SELECT rowid FROM clips_fts WHERE clips_fts MATCH ?
+         ORDER BY rowid DESC LIMIT 1 OFFSET ${SEARCH_RECENT_MATCHES - 1}
+      `).get(match);
+      const ranked = this.db.prepare(`
         SELECT c.*, bm25(clips_fts) AS rank
           FROM clips_fts
           JOIN clips c ON c.id = clips_fts.rowid
-         WHERE clips_fts MATCH ?
+         WHERE clips_fts MATCH ? AND clips_fts.rowid >= ?
            AND ${where.join(" AND ")}
          ORDER BY rank
          LIMIT ?
-      `).all(ftsQuery(raw), ...params, limit).map(hydrate);
+      `);
+      const from = oldest ? oldest.rowid : 0;
+      const rows = ranked.all(match, from, ...params, limit);
+      // The newest matches may mostly be in Trash or another workspace. If
+      // the filters left too few, rank everything after all.
+      const all = from > 0 && rows.length < limit ? ranked.all(match, 0, ...params, limit) : rows;
+      return all.map(hydrate);
     } catch (err) {
       // A bare LIKE fallback, because fts5 MATCH throws on malformed queries
       // (an unbalanced quote, a lone NEAR) and a search box should never be
@@ -741,4 +761,4 @@ function safeSize(p) {
   try { return fs.statSync(p).size; } catch (_) { return 0; }
 }
 
-module.exports = { ClipDatabase, SCHEMA_VERSION, ftsQuery };
+module.exports = { ClipDatabase, SCHEMA_VERSION, SEARCH_RECENT_MATCHES, ftsQuery };
