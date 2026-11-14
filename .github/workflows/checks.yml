@@ -45,3 +45,27 @@ jobs:
 
       - name: Committed bundle matches its sources
         run: npm run bundle:check
+
+  # The checks that need Electron itself: the database layer (better-sqlite3
+  # is built for Electron's Node) and the whole app end to end, on a database
+  # of synthetic clips. On Windows, because ClipCanvas is a Windows app.
+  app:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # A full install this time: it downloads Electron, and the postinstall
+      # step fetches better-sqlite3 built for it.
+      - name: Install
+        run: npm ci
+
+      - name: Database layer
+        run: npm run test:db
+
+      - name: The app, end to end
+        run: npm run verify:app -- --synthetic
