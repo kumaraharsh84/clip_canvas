@@ -17,10 +17,10 @@
 //
 // ONE ALGORITHM, TWO MODES
 // countLines() and wrapLines() MUST agree exactly or the layout reserves the
-// wrong area. An earlier version kept two hand-written implementations in sync
-// and a fuzz test found them disagreeing on 12% of random inputs. So there is
-// now exactly one scanner, walkText(), and counting is just "run it without
-// collecting". Agreement is structural, not a thing to re-verify.
+// wrong area. Two hand-written implementations kept in sync disagree sooner or
+// later (a fuzz test found 12% of random inputs), so there is exactly one
+// scanner, walkText(), and counting is just "run it without collecting".
+// Agreement is structural, not a thing to re-verify.
 //
 // WHITESPACE IS PRESERVED
 // Runs of spaces are NOT collapsed. This is a clipboard manager: clips are code
@@ -169,7 +169,7 @@ function wrapLines(clipId, text, cols) {
 // columns instead of longer lines, so AREA becomes the binding constraint --
 // and area is exactly what the treemap already guarantees, because a clip's
 // weight IS its rendered text area. It is also how you would set this text on
-// paper, and it matches the dense packing of the reference visualiser.
+// paper.
 //
 // layout.js and renderer2d.js MUST agree on this geometry or cards clip their
 // own text, so both call this one function rather than each deriving it.
@@ -182,8 +182,8 @@ const MIN_COL_CHARS = 20;    // below this, prefer fewer columns
  */
 // Column shape limits. Without them, a card the strip layout made very wide
 // and very short -- the last strip of a container often is -- pours its text
-// into hundreds of one-line columns: complete, and unreadable. Measured on 20k
-// clips, one card flowed into 1,929 columns. Columns are kept at least
+// into hundreds of one-line columns: complete, and unreadable (1,929 columns
+// for one card, in a 20,000-clip test). Columns are kept at least
 // MIN_LINES_PER_COL lines tall and at most MAX_COL_CHARS wide, and the font
 // shrinks instead (fitCard) when that is what it takes to fit.
 const MIN_LINES_PER_COL = 12;
@@ -240,18 +240,17 @@ function longestLine(text) {
 }
 
 // ── Per-card font fitting ────────────────────────────────────────────────────
-// The first version sized every BOX to fit its text at one fixed font size.
-// That guaranteed no clip was ever truncated, but it meant box area was
-// proportional to text length -- and on real data one 38,314-character paste
-// took 8% of the entire canvas while the smallest half of all clips shared
-// 1.9%. The archive read as a few huge slabs, nothing like the reference.
+// Sizing every BOX to fit its text at one fixed font size would guarantee that
+// no clip is truncated, but box area would be proportional to text length: one
+// 38,000-character paste would take 8% of the canvas while the smallest half
+// of all clips shared 2%.
 //
-// The reference does it the other way round: the box comes from the layout,
-// and the TEXT shrinks to fit the box. A big file's code is microscopic until
-// you fly into it. fitCard() is that: the largest font scale at which the
-// whole clip still fits its card, flowing into as many columns as the width
-// allows. Nothing is truncated -- it is all there, it is just small until you
-// zoom -- and box size is free to be chosen for the look of the mosaic.
+// So it is the other way round: the box comes from the layout, and the TEXT
+// shrinks to fit the box. A long clip's text is microscopic until you fly
+// into it. fitCard() is that: the largest font scale at which the whole clip
+// still fits its card, flowing into as many columns as the width allows.
+// Nothing is truncated -- it is all there, it is just small until you zoom --
+// and box size is free to be chosen for the look of the mosaic.
 
 /**
  * @returns {{scale, fits, columns, colChars, totalLines, linesPerColumn, neededHeight}}

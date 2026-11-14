@@ -1,7 +1,7 @@
 // ─── src/renderer/canvas/lod.js ──────────────────────────────────────────────
 // Level-of-detail vocabulary for the Time Canvas.
 //
-// The zoom labels follow the roadmap ladder (planning/time-canvas-roadmap.md):
+// The zoom labels form a ladder, where a higher percentage means further out:
 //   500% years | 400% months | 300% days | 200% hours | 100% clips
 //
 // The level is not derived from an absolute scale: the renderer finds which

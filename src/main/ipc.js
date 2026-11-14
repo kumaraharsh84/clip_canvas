@@ -1,10 +1,9 @@
 // ─── src/main/ipc.js ─────────────────────────────────────────────────────────
 // Every channel the windows may call, in one table.
 //
-// main.js and test/verify-app.js both register THIS table. The test used to
-// keep its own copy of it, and the two drifted: a channel could be removed
-// from the app and live on in the test, or the other way round. What differs
-// between them is the `host` -- main.js passes the real tray, shortcut and
+// main.js and test/verify-app.js both register THIS table, so the app and its
+// end-to-end check cannot disagree about which channels exist. What differs
+// between them is the host: main.js passes the real tray, shortcut and
 // clipboard; the test passes stand-ins, so it never takes a shortcut or
 // writes to anyone's clipboard.
 //

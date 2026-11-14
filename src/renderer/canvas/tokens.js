@@ -1,11 +1,11 @@
 // ─── src/renderer/canvas/tokens.js ───────────────────────────────────────────
 // Split a wrapped line into coloured runs.
 //
-// This is where the reference's texture comes from. Zoomed out, each of its
-// file boxes is a field of short coloured dashes -- keywords one colour,
-// strings another -- and that pattern is what makes the mosaic read as TEXT
-// rather than as flat tiles. Every clip card gets the same treatment: prose is
-// word-dashes in the category hue, code is syntax-coloured runs.
+// This is where the canvas's texture comes from. Zoomed out, each card is a
+// field of short coloured dashes -- keywords one colour, strings another --
+// and that pattern is what makes the mosaic read as TEXT rather than as flat
+// tiles. Prose is word-dashes in the category hue, code is syntax-coloured
+// runs.
 //
 // It is a scanner, not a parser. It runs per visible line, so it has to be
 // cheap, and the look depends on colour variation, not on correct grammar. A

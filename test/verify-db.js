@@ -65,7 +65,7 @@ function run() {
     let db = new ClipDatabase(p, store);
     db.createWorkspace("Archive");
     db.createWorkspace("Work");
-    db.db.prepare("UPDATE workspaces SET is_default = 1").run(); // as an early seed left them
+    db.db.prepare("UPDATE workspaces SET is_default = 1").run(); // several defaults, as a damaged database might have
     db.close();
     db = new ClipDatabase(p, store);
     const defs = db.listWorkspaces().filter((w) => w.is_default);

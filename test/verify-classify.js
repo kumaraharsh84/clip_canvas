@@ -1,9 +1,8 @@
 // ─── test/verify-classify.js ──────────────────────────────────────────────
 // Regression check for clip classification (src/renderer/canvas/classify.js).
 //
-// Every case below is a SYNTHETIC stand-in for a kind of clip found in real
-// clipboard history -- the real clips are private and do not belong in the
-// repo. Each one reproduces the property that made its kind misclassified:
+// Every case below is synthetic, and stands for a kind of clip that is easy to
+// misclassify. Each one reproduces the property that makes its kind hard:
 //   - prose stored as "code" at capture time, shown as "Other code"
 //   - chats that quote one command, filed as Shell
 //   - reports whose ===== dividers made them look symbol-dense
@@ -84,7 +83,7 @@ const CASES = [
   // "key:" and "- item" lines as config would also claim markdown bullet
   // lists). What matters here is that the prose rule does not swallow it.
   ["code", "YAML config -- must not become prose", "services:\n  web:\n    image: nginx\n    restart: always\n  db:\n    image: postgres",
-   "text" /* stored: same as the old capture rule -- zero code signals */],
+   "text" /* stored as text: zero code signals */],
   ["json", ".env config", "DEBUG=1\nSECRET_KEY=change-me\nDATABASE_URL=postgres://localhost/demo\nALLOWED_HOSTS=localhost"],
   ["html", "HTML", "<section class=\"card\">\n  <header><h2>Recent</h2></header>\n  <ul>\n    <li><a href=\"#a\">First</a></li>\n  </ul>\n</section>"],
   ["css", "CSS", ".card {\n  display: grid;\n  gap: 8px;\n  color: #c9d6e0;\n}\n\n.card:hover {\n  border-color: #6fa8dc;\n}"],

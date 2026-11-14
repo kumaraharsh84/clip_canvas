@@ -1,10 +1,10 @@
 // ─── src/renderer/canvas/describe.js ─────────────────────────────────────────
 // Plain-data description of a node, for the info panel.
 //
-// The reference keeps a side panel that says where you are and what you are
-// looking at -- the path to the hovered box and how much is inside it. This is
-// the data half of that; the UI decides how to show it. Pure: no DOM, so it can
-// be exercised from the node verifiers.
+// The info panel says where you are and what you are looking at: the path to
+// the hovered box and how much is inside it. This is the data half of that;
+// the UI decides how to show it. Pure: no DOM, so it can be exercised from the
+// node verifiers.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { CATEGORIES } = require("./classify");

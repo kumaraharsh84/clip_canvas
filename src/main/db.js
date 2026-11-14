@@ -2,10 +2,8 @@
 // SQLite data layer for ClipCanvas, on better-sqlite3 (synchronous by design --
 // every call here runs in the main process and finishes before it returns).
 //
-// RECONSTRUCTED against a live database (%APPDATA%/clipcanvas/clipcanvas.db)
-// after the original source was lost. The schema below is not a guess: it was
-// read back out of that file, which already carried 5 applied migrations.
-// test/verify-db.js is what checks this class.
+// Migrations are additive (see migrate), so a database made by any earlier
+// version opens in place. test/verify-db.js checks this class.
 //
 // TWO THINGS THAT BITE IF YOU FORGET THEM
 //
@@ -293,9 +291,8 @@ class ClipDatabase {
   }
 
   /**
-   * Exactly one default workspace: startup captures into it. An early seed
-   * marked every workspace default, and the first of them alphabetically won.
-   * The oldest default keeps the flag.
+   * Exactly one default workspace: startup captures into it. If a database
+   * has several marked default, the oldest keeps the flag.
    */
   oneDefaultWorkspace() {
     this.db.prepare(`
@@ -462,8 +459,7 @@ class ClipDatabase {
    * means scoring every match: a second per keystroke at 30,000 clips. So
    * when a query matches more than SEARCH_RECENT_MATCHES clips, only the
    * newest that many are ranked. A query that matches fewer is ranked in
-   * full, exactly as before. Either way the cost no longer grows with the
-   * history.
+   * full. Either way the cost does not grow with the history.
    */
   searchClips(opts = {}) {
     const raw = String(opts.query || opts.q || "").trim();

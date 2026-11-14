@@ -104,10 +104,10 @@
     //
     // ONE ALGORITHM, TWO MODES
     // countLines() and wrapLines() MUST agree exactly or the layout reserves the
-    // wrong area. An earlier version kept two hand-written implementations in sync
-    // and a fuzz test found them disagreeing on 12% of random inputs. So there is
-    // now exactly one scanner, walkText(), and counting is just "run it without
-    // collecting". Agreement is structural, not a thing to re-verify.
+    // wrong area. Two hand-written implementations kept in sync disagree sooner or
+    // later (a fuzz test found 12% of random inputs), so there is exactly one
+    // scanner, walkText(), and counting is just "run it without collecting".
+    // Agreement is structural, not a thing to re-verify.
     //
     // WHITESPACE IS PRESERVED
     // Runs of spaces are NOT collapsed. This is a clipboard manager: clips are code
@@ -256,7 +256,7 @@
     // columns instead of longer lines, so AREA becomes the binding constraint --
     // and area is exactly what the treemap already guarantees, because a clip's
     // weight IS its rendered text area. It is also how you would set this text on
-    // paper, and it matches the dense packing of the reference visualiser.
+    // paper.
     //
     // layout.js and renderer2d.js MUST agree on this geometry or cards clip their
     // own text, so both call this one function rather than each deriving it.
@@ -269,8 +269,8 @@
      */
     // Column shape limits. Without them, a card the strip layout made very wide
     // and very short -- the last strip of a container often is -- pours its text
-    // into hundreds of one-line columns: complete, and unreadable. Measured on 20k
-    // clips, one card flowed into 1,929 columns. Columns are kept at least
+    // into hundreds of one-line columns: complete, and unreadable (1,929 columns
+    // for one card, in a 20,000-clip test). Columns are kept at least
     // MIN_LINES_PER_COL lines tall and at most MAX_COL_CHARS wide, and the font
     // shrinks instead (fitCard) when that is what it takes to fit.
     const MIN_LINES_PER_COL = 12;
@@ -327,18 +327,17 @@
     }
 
     // ── Per-card font fitting ────────────────────────────────────────────────────
-    // The first version sized every BOX to fit its text at one fixed font size.
-    // That guaranteed no clip was ever truncated, but it meant box area was
-    // proportional to text length -- and on real data one 38,314-character paste
-    // took 8% of the entire canvas while the smallest half of all clips shared
-    // 1.9%. The archive read as a few huge slabs, nothing like the reference.
+    // Sizing every BOX to fit its text at one fixed font size would guarantee that
+    // no clip is truncated, but box area would be proportional to text length: one
+    // 38,000-character paste would take 8% of the canvas while the smallest half
+    // of all clips shared 2%.
     //
-    // The reference does it the other way round: the box comes from the layout,
-    // and the TEXT shrinks to fit the box. A big file's code is microscopic until
-    // you fly into it. fitCard() is that: the largest font scale at which the
-    // whole clip still fits its card, flowing into as many columns as the width
-    // allows. Nothing is truncated -- it is all there, it is just small until you
-    // zoom -- and box size is free to be chosen for the look of the mosaic.
+    // So it is the other way round: the box comes from the layout, and the TEXT
+    // shrinks to fit the box. A long clip's text is microscopic until you fly
+    // into it. fitCard() is that: the largest font scale at which the whole clip
+    // still fits its card, flowing into as many columns as the width allows.
+    // Nothing is truncated -- it is all there, it is just small until you zoom --
+    // and box size is free to be chosen for the look of the mosaic.
 
     /**
      * @returns {{scale, fits, columns, colChars, totalLines, linesPerColumn, neededHeight}}
@@ -404,16 +403,12 @@
     // ─── src/renderer/canvas/classify.js ─────────────────────────────────────────
     // What colour a clip is.
     //
-    // The reference visualiser's mosaic is rich because every box is coloured by
-    // what KIND of file it is -- one hue per language -- so the zoomed-out view
-    // reads as regions of C++, of tests, of build files. Colouring clips by their
-    // four storage types (text / code / url / image) gives only four hues, and all
-    // 649 real clips have source = 'clipboard', so there was no second dimension
-    // to colour by. That is most of why the archive view looked flat.
-    //
-    // Detecting the language of code clips, and splitting prose from one-line
-    // snippets, gives a dozen categories -- and they are categories you actually
-    // think in ("that SQL I copied on Tuesday").
+    // A zoomed-out mosaic only reads as regions if every box is coloured by what
+    // KIND of thing it holds. Colouring clips by their four storage types (text /
+    // code / url / image) gives four hues and a flat view. Detecting the language
+    // of code clips, and splitting prose from one-line snippets, gives a dozen
+    // categories -- and they are categories you actually think in ("that SQL I
+    // copied on Tuesday").
     //
     // Detection is heuristic and deliberately cheap: it reads at most the first
     // 4 KB of a clip, once, and the result is cached per clip object.
@@ -531,10 +526,9 @@
 
       if (clip.type === "url" || /^https?:\/\/\S+$/i.test(trimmed)) return CATEGORIES.url;
       if (clip.type === "code") {
-        // The capture-time "code" label is unreliable: measured on real history,
-        // 81 of 245 code-labelled clips were chats, prompts, plans and reports
-        // (English and Hinglish), and ~12 more were terminal sessions filed under
-        // "Other code", JSON or SQL. The order below is what fixed them:
+        // The capture-time "code" label is not reliable enough to colour by:
+        // chats, prompts, plans and reports (English and Hinglish) get it, and so
+        // do terminal sessions. So the label is checked again, in this order:
         //   1. a terminal session is Shell, whatever it quotes
         //   2. otherwise, text that reads as prose is prose -- even if it mentions
         //      a command or keyword, which is all it took to win the language vote --
@@ -649,9 +643,8 @@
     // ── Terminal sessions ────────────────────────────────────────────────────────
     // A line that is a prompt, a command typed at one, or characteristic command
     // output. Judged per LINE, never "anywhere in the clip": a chat message that
-    // quotes one command is still a chat -- matching anywhere is exactly how
-    // Hinglish replies like "ye rahe commands, ek-ek karke run karo" were being
-    // filed as Shell.
+    // quotes one command is still a chat. Matching anywhere would file a reply
+    // like "ye rahe commands, ek-ek karke run karo" as Shell.
     const TERMINAL_LINE = [
       /^\s*(?:\([\w.-]+\)\s+)?[A-Za-z]?:\\[^>\n]*>/,            // C:\Users\demo>ping   (cmd; drive letter may be cut)
       /^.{0,24}?\bPS\s+[A-Za-z]:\\[^>\n]*>/,                    // (.venv) PS D:\proj>  (PowerShell)
@@ -726,10 +719,9 @@
 
     // ── Prose ────────────────────────────────────────────────────────────────────
     // Language-agnostic on purpose. A test built on English function words scores
-    // a Hinglish message ("Theek hai, seedha jawab: ...") at zero, and that is a
-    // large share of real clipboard history. What separates prose from code in any
-    // language is its shape: few code symbols, mostly plain words, sentence-length
-    // lines, and lines that do not end in ; { } ( or ,.
+    // a Hinglish message ("Theek hai, seedha jawab: ...") at zero. What separates
+    // prose from code in any language is its shape: few code symbols, mostly plain
+    // words, sentence-length lines, and lines that do not end in ; { } ( or ,.
 
     // Markdown structure -- bullets, numbering, headings, table pipes, arrows and
     // dashes. Counted neither for nor against prose: a bulleted plan is still prose.
@@ -785,11 +777,10 @@
     }
 
     /**
-     * Checked against every text- and code-labelled clip in real history (540),
-     * reviewing each clip whose label changed. What it deliberately leaves as code:
-     * messages that are mostly commands, and agent transcripts dominated by command
-     * output -- they sit right on the symbol threshold beside real Python modules
-     * (0.036-0.040 vs 0.037), so any rule loose enough to take them takes those too.
+     * What it deliberately leaves as code: messages that are mostly commands, and
+     * transcripts dominated by command output. They sit right on the symbol
+     * threshold beside real Python modules (0.036-0.040 vs 0.037), so any rule
+     * loose enough to take them takes those too.
      */
     function looksLikeProse(src) {
       const f = proseStats(src);
@@ -855,11 +846,11 @@
     // ─── src/renderer/canvas/tokens.js ───────────────────────────────────────────
     // Split a wrapped line into coloured runs.
     //
-    // This is where the reference's texture comes from. Zoomed out, each of its
-    // file boxes is a field of short coloured dashes -- keywords one colour,
-    // strings another -- and that pattern is what makes the mosaic read as TEXT
-    // rather than as flat tiles. Every clip card gets the same treatment: prose is
-    // word-dashes in the category hue, code is syntax-coloured runs.
+    // This is where the canvas's texture comes from. Zoomed out, each card is a
+    // field of short coloured dashes -- keywords one colour, strings another --
+    // and that pattern is what makes the mosaic read as TEXT rather than as flat
+    // tiles. Prose is word-dashes in the category hue, code is syntax-coloured
+    // runs.
     //
     // It is a scanner, not a parser. It runs per visible line, so it has to be
     // cheap, and the look depends on colour variation, not on correct grammar. A
@@ -1061,7 +1052,7 @@
     // ─── src/renderer/canvas/lod.js ──────────────────────────────────────────────
     // Level-of-detail vocabulary for the Time Canvas.
     //
-    // The zoom labels follow the roadmap ladder (planning/time-canvas-roadmap.md):
+    // The zoom labels form a ladder, where a higher percentage means further out:
     //   500% years | 400% months | 300% days | 200% hours | 100% clips
     //
     // The level is not derived from an absolute scale: the renderer finds which
@@ -1107,8 +1098,8 @@
     // CSS pixels inside the canvas element. `scale` is the world->screen multiplier:
     // higher scale = zoomed IN = closer to the clips.
     //
-    // NOTE ON THE ZOOM LABEL: the roadmap labels zoom the
-    // AutoCAD way, where a HIGHER percentage means zoomed OUT:
+    // NOTE ON THE ZOOM LABEL: the label shown to the user counts the AutoCAD way,
+    // where a HIGHER percentage means zoomed OUT:
     //   500% years | 400% months | 300% days | 200% hours | 100% clips
     // That is the inverse of `scale`, so the label is derived in lod.js and the two
     // must never be conflated. Internally everything uses `scale`.
@@ -1218,13 +1209,12 @@
     //     Year > Month > Day          fixed, from the date alone (calendar.js)
     //                    Day > Hour > Clip     this file
     //
-    // nested as boxes inside boxes, the way the reference nests a repository's
-    // directories and files. You do not navigate into a level; you fly into it.
+    // nested as boxes inside boxes. You do not navigate into a level; you fly
+    // into it.
     //
     // WHY ONLY A DAY
-    // This used to lay out the whole archive as one treemap, so every copy moved
-    // everything: measured on 5,000 clips, one new clip shifted all 5,000, some by
-    // 35 card widths. Now the calendar gives every day a permanent cell and this
+    // Laying the whole history out as one treemap would make every copy move
+    // everything. The calendar gives every day a permanent cell instead, and this
     // fills one cell from that day's clips alone. A new copy can only rearrange
     // today; June stays where June was.
     //
@@ -1241,9 +1231,9 @@
     // 2. BOX SIZE IS DECOUPLED FROM TEXT SIZE. A card's area grows with the SQUARE
     //    ROOT of its length, clamped -- 100x the text is 10x the area, and nothing
     //    may exceed 8x a typical card. Each card then fits its own text by choosing
-    //    its own font scale (textlayout.fitCard). Measured on real data, the old
-    //    area-equals-text rule gave one paste 8% of the canvas and half the clips
-    //    1.9% between them; this is what makes the archive an even mosaic.
+    //    its own font scale (textlayout.fitCard). If area equalled text length,
+    //    one long paste would take a large part of the canvas and half the clips
+    //    would share a sliver; this is what makes the archive an even mosaic.
     //
     // 3. NOTHING IS TRUNCATED, IT IS JUST SMALL UNTIL YOU ZOOM. Every card holds its
     //    complete text at its own scale. A floor on that scale, plus a maximum zoom
@@ -1371,9 +1361,8 @@
 
     /**
      * Find-or-create a container. Keys are full paths ("root/y2026/m9/d5/h12"), so
-     * the 12 PM of one day is never confused with the 12 PM of another -- which is
-     * exactly the bug the old flat "h12" keys had: the current-hour marker lit up
-     * the same hour on every day.
+     * the 12 PM of one day is never confused with the 12 PM of another: with flat
+     * "h12" keys the current-hour marker would light the same hour on every day.
      */
     function child(parent, localKey, label, depth, t, sortKey) {
       if (!parent._index) parent._index = new Map();
@@ -1531,8 +1520,8 @@
     /**
      * Header, padding and gap for a box, proportional to the box itself.
      *
-     * Fixed-size chrome is what the reference avoids: its labels are small text in
-     * the corner of each box, legible once that box fills your screen. Scaling the
+     * Labels are small text in the corner of each box, legible once that box
+     * fills your screen, never chrome of a fixed size. Scaling the
      * header with the box gives the same behaviour -- a year's title is readable at
      * the full-archive view, an hour's once you have flown to that day -- and it
      * stays a few percent of the box at every level instead of swamping small ones.
@@ -2032,10 +2021,10 @@
     // ─── src/renderer/canvas/describe.js ─────────────────────────────────────────
     // Plain-data description of a node, for the info panel.
     //
-    // The reference keeps a side panel that says where you are and what you are
-    // looking at -- the path to the hovered box and how much is inside it. This is
-    // the data half of that; the UI decides how to show it. Pure: no DOM, so it can
-    // be exercised from the node verifiers.
+    // The info panel says where you are and what you are looking at: the path to
+    // the hovered box and how much is inside it. This is the data half of that;
+    // the UI decides how to show it. Pure: no DOM, so it can be exercised from the
+    // node verifiers.
     // ─────────────────────────────────────────────────────────────────────────────
 
     const { CATEGORIES } = require("./classify");
@@ -2270,7 +2259,7 @@
     // ─── src/renderer/canvas/texturecache.js ─────────────────────────────────────
     // Pre-painted line textures for clip cards.
     //
-    // Zoomed out, the reference is a field of boxes each filled with faint coloured
+    // Zoomed out, the canvas is a field of boxes each filled with faint coloured
     // lines. Painting those lines directly every frame is the expensive way: a few
     // hundred cards times dozens of lines times several tokens is tens of thousands
     // of rectangles per frame. Instead each card's text is painted ONCE into a
@@ -2363,7 +2352,7 @@
     // A CARD IS READ AT FOUR DISTANCES, AND IS DRAWN DIFFERENTLY AT EACH
     //
     //   a few px       one solid tile in its category colour. Thousands of these
-    //                  are the zoomed-out mosaic -- the reference's opening shot.
+    //                  are the zoomed-out mosaic.
     //   tens of px     its text as a pre-painted texture of coloured dashes, one
     //                  drawImage per card (see texturecache.js).
     //   lines >= 2.4px the same dashes drawn live, per token, so they stay crisp.
@@ -2530,7 +2519,7 @@
           ctx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1);
         }
 
-        // The current hour stays marked, per the roadmap.
+        // The current hour stays marked.
         if (this.nowKey && n.key === this.nowKey && sw > 4 && sh > 4) {
           ctx.strokeStyle = this.theme.now;
           ctx.lineWidth = 2;
@@ -2885,7 +2874,7 @@
         const lastVis = Math.ceil((this.H - by) / lineH) + 1;
         // Dashes are snapped to whole pixels. A 1-2px bar at a fractional y is all
         // anti-aliased edge, and a card full of them reads as a grey smear rather
-        // than as the crisp lines the reference shows.
+        // than as crisp lines.
         const barH = Math.max(1, Math.round(lineH * 0.5));
         const barOff = Math.round((lineH - barH) / 2);
         const paths = real ? null : new Map();
@@ -3121,9 +3110,9 @@
     // ─── src/renderer/canvas/controls.js ─────────────────────────────────────────
     // Flying around the Time Canvas.
     //
-    // What makes the reference feel like flight rather than like a map viewer is
-    // that nothing snaps: zoom eases toward where the wheel asked for, a released
-    // drag keeps drifting, and moving between levels is an animated camera move.
+    // It should feel like flight rather than like a map viewer, so nothing snaps:
+    // zoom eases toward where the wheel asked for, a released drag keeps
+    // drifting, and moving between levels is an animated camera move.
     //
     //   wheel / pinch    smooth zoom toward the cursor
     //   drag             pan, with inertia when released while moving
@@ -3133,7 +3122,7 @@
     //   F / Home         fit everything        + / -   zoom        arrows   pan
     //   T                today                 Backspace   fly out one level
     //
-    // Wheel direction is unchanged from the DOM version: deltaY > 0 zooms out.
+    // Wheel direction: deltaY > 0 zooms out.
     // ─────────────────────────────────────────────────────────────────────────────
 
     const DBL_MS = 320;
@@ -4066,7 +4055,7 @@
       }
 
       // ── Now ────────────────────────────────────────────────────────────────────
-      // The current hour and today stay marked, per the roadmap. Checked every
+      // The current hour and today stay marked. Checked every
       // minute, so the marker moves on when the hour does; a new day re-reads the
       // counts (yesterday is no longer "today", and the future is one day shorter).
       let todayId = null;
@@ -4202,7 +4191,7 @@
         },
       };
 
-      /** What is loaded, and how well its text fits -- the old getLayout(), per day. */
+      /** What is loaded, and how well its text fits, over the loaded days. */
       function loadedSummary() {
         let minFontScale = 1, worstOverflow = 0, failed = 0, clips = 0;
         for (const e of loaded.values()) {

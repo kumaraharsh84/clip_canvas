@@ -4,13 +4,12 @@
 //     Year > Month > Day          fixed, from the date alone (calendar.js)
 //                    Day > Hour > Clip     this file
 //
-// nested as boxes inside boxes, the way the reference nests a repository's
-// directories and files. You do not navigate into a level; you fly into it.
+// nested as boxes inside boxes. You do not navigate into a level; you fly
+// into it.
 //
 // WHY ONLY A DAY
-// This used to lay out the whole archive as one treemap, so every copy moved
-// everything: measured on 5,000 clips, one new clip shifted all 5,000, some by
-// 35 card widths. Now the calendar gives every day a permanent cell and this
+// Laying the whole history out as one treemap would make every copy move
+// everything. The calendar gives every day a permanent cell instead, and this
 // fills one cell from that day's clips alone. A new copy can only rearrange
 // today; June stays where June was.
 //
@@ -27,9 +26,9 @@
 // 2. BOX SIZE IS DECOUPLED FROM TEXT SIZE. A card's area grows with the SQUARE
 //    ROOT of its length, clamped -- 100x the text is 10x the area, and nothing
 //    may exceed 8x a typical card. Each card then fits its own text by choosing
-//    its own font scale (textlayout.fitCard). Measured on real data, the old
-//    area-equals-text rule gave one paste 8% of the canvas and half the clips
-//    1.9% between them; this is what makes the archive an even mosaic.
+//    its own font scale (textlayout.fitCard). If area equalled text length,
+//    one long paste would take a large part of the canvas and half the clips
+//    would share a sliver; this is what makes the archive an even mosaic.
 //
 // 3. NOTHING IS TRUNCATED, IT IS JUST SMALL UNTIL YOU ZOOM. Every card holds its
 //    complete text at its own scale. A floor on that scale, plus a maximum zoom
@@ -157,9 +156,8 @@ function node(key, label, depth, time, sortKey, parent) {
 
 /**
  * Find-or-create a container. Keys are full paths ("root/y2026/m9/d5/h12"), so
- * the 12 PM of one day is never confused with the 12 PM of another -- which is
- * exactly the bug the old flat "h12" keys had: the current-hour marker lit up
- * the same hour on every day.
+ * the 12 PM of one day is never confused with the 12 PM of another: with flat
+ * "h12" keys the current-hour marker would light the same hour on every day.
  */
 function child(parent, localKey, label, depth, t, sortKey) {
   if (!parent._index) parent._index = new Map();
@@ -317,8 +315,8 @@ function lw(n) {
 /**
  * Header, padding and gap for a box, proportional to the box itself.
  *
- * Fixed-size chrome is what the reference avoids: its labels are small text in
- * the corner of each box, legible once that box fills your screen. Scaling the
+ * Labels are small text in the corner of each box, legible once that box
+ * fills your screen, never chrome of a fixed size. Scaling the
  * header with the box gives the same behaviour -- a year's title is readable at
  * the full-archive view, an hour's once you have flown to that day -- and it
  * stays a few percent of the box at every level instead of swamping small ones.

@@ -1,7 +1,7 @@
 name: checks
 
-# Pushes to main, and every pull request. A branch with an open pull request
-# used to be checked twice, once for the push and once for the request.
+# Pushes to main, and every pull request -- not every push, or a branch with
+# an open pull request is checked twice.
 on:
   push:
     branches: [main]

@@ -21,7 +21,7 @@ console.log("\n-- the defaults --");
   const bad = DEFAULT_HOTKEYS.filter((d) => { const r = check(d); return !r.ok || r.warning || r.hotkey !== d; });
   ok("every default is allowed, canonical, and has no warning", bad.length === 0, bad.join(", ") || DEFAULT_HOTKEYS.join(", "));
   ok("the first default is Win + Alt + V", display(DEFAULT_HOTKEY) === "Win + Alt + V", display(DEFAULT_HOTKEY));
-  ok("none is the old Ctrl+Shift+V", !DEFAULT_HOTKEYS.includes("Ctrl+Shift+V"));
+  ok("none is Ctrl+Shift+V, which browsers and editors use", !DEFAULT_HOTKEYS.includes("Ctrl+Shift+V"));
 }
 
 console.log("\n-- one canonical form --");

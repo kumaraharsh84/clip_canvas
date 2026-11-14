@@ -332,7 +332,7 @@ function mountTimeCanvas(host, opts = {}) {
   }
 
   // ── Now ────────────────────────────────────────────────────────────────────
-  // The current hour and today stay marked, per the roadmap. Checked every
+  // The current hour and today stay marked. Checked every
   // minute, so the marker moves on when the hour does; a new day re-reads the
   // counts (yesterday is no longer "today", and the future is one day shorter).
   let todayId = null;
@@ -468,7 +468,7 @@ function mountTimeCanvas(host, opts = {}) {
     },
   };
 
-  /** What is loaded, and how well its text fits -- the old getLayout(), per day. */
+  /** What is loaded, and how well its text fits, over the loaded days. */
   function loadedSummary() {
     let minFontScale = 1, worstOverflow = 0, failed = 0, clips = 0;
     for (const e of loaded.values()) {

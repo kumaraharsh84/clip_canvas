@@ -6,16 +6,15 @@
 // Two properties matter for what the demo shows:
 //   - lengths are heavy-tailed, like real clipboard history: most clips short,
 //     a few enormous -- the case per-card font fitting has to survive
-//   - each code clip is ONE language, so the canvas shows the full palette the
-//     way real history does (a mixed-language blob just reads as "Other code")
+//   - each code clip is ONE language, so the canvas shows the full palette
+//     (a mixed-language blob just reads as "Other code")
 //   - clips cluster into working sessions, so hours are as uneven as real ones
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function (global) {
-  // mulberry32: deterministic, so runs are comparable. The simple LCG this
-  // replaced had strongly correlated consecutive outputs -- the language pick
-  // that follows the clip-type pick landed in a narrow band, and the demo never
-  // produced a single SQL or HTML clip in 2,000.
+  // mulberry32: deterministic, so runs are comparable. A simple LCG has
+  // strongly correlated consecutive outputs: the language pick that follows
+  // the clip-type pick lands in a narrow band, and some languages never appear.
   let seed = 1234567;
   function rnd() {
     seed = (seed + 0x6d2b79f5) | 0;

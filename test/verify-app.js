@@ -19,8 +19,8 @@
 // --shots=DIR writes today.png, overview.png, month.png, hour.png, clip.png
 // and settings.png. The window renders
 // OFFSCREEN: a hidden normal window stops producing compositor frames, and
-// capturePage then returns a stale one -- an earlier version of this harness
-// photographed the start-up view no matter where the camera had flown.
+// capturePage then returns a stale one -- the start-up view, no matter where
+// the camera has flown.
 //
 // SAFETY: a real database is only ever COPIED. Nothing here writes to
 // %APPDATA%/clipcanvas/clipcanvas.db.
@@ -107,7 +107,7 @@ function registerIpc(db, workspaceId, storageDir) {
     hotkey, hotkeySaved: saved, hotkeyDefault: hotkeys.DEFAULT_HOTKEY, hotkeyNote: null, autoStart, dev: false,
     capture: { paused, error: false },
     storageDir, logFile: path.join(os.tmpdir(), "clipcanvas.log"),
-    stats: { clips: 649, dbBytes: 5.2e6, imageBytes: 1.24e8, images: 84 },
+    stats: { clips: 1200, dbBytes: 5.2e6, imageBytes: 1.24e8, images: 90 },
     version: "0.0.0-verify", versions: process.versions, homepage: "https://github.com/kumaraharsh84/clip_canvas",
   });
 
@@ -677,7 +677,7 @@ app.whenReady().then(async () => {
     await sw.loadFile(path.join(__dirname, "..", "src", "renderer", "settings.html"));
     const st = await sw.webContents.executeJavaScript(SETTINGS, true);
     ok("shows the current shortcut as key caps", st.shown === hotkeys.display(hotkeys.DEFAULT_HOTKEY), st.shown);
-    ok("shows the version and storage figures", st.version === "0.0.0-verify" && /649 clips/.test(st.stats), st.stats);
+    ok("shows the version and storage figures", st.version === "0.0.0-verify" && /1,200 clips/.test(st.stats), st.stats);
     ok("shows capture on and Start with Windows on", st.capture && st.autostart);
     ok("shows the logo under About", st.logo > 0, st.logo + " px");
     ok("clicking the keys starts recording, and held keys show", st.recording && /Ctrl.*Alt/.test(st.held), st.held);

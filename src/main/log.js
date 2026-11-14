@@ -2,9 +2,9 @@
 // Errors and notable events, written to a file you can open from the tray.
 //
 // ClipCanvas runs hidden in the tray all day, started by Windows with no
-// console, so anything it prints goes nowhere. Capture once stopped for three
-// weeks without anyone noticing. Everything worth knowing about -- startup,
-// crashes, a clipboard that cannot be read, a failed IPC call -- lands here:
+// console, so anything it prints goes nowhere, and a capture that has stopped
+// would go unnoticed. Everything worth knowing about -- startup, crashes, a
+// clipboard that cannot be read, a failed IPC call -- lands here:
 //
 //   %APPDATA%\clipcanvas\logs\clipcanvas.log
 //

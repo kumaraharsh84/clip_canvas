@@ -1,7 +1,7 @@
 // ─── src/renderer/canvas/texturecache.js ─────────────────────────────────────
 // Pre-painted line textures for clip cards.
 //
-// Zoomed out, the reference is a field of boxes each filled with faint coloured
+// Zoomed out, the canvas is a field of boxes each filled with faint coloured
 // lines. Painting those lines directly every frame is the expensive way: a few
 // hundred cards times dozens of lines times several tokens is tens of thousands
 // of rectangles per frame. Instead each card's text is painted ONCE into a

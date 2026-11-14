@@ -1,16 +1,12 @@
 // ─── src/renderer/canvas/classify.js ─────────────────────────────────────────
 // What colour a clip is.
 //
-// The reference visualiser's mosaic is rich because every box is coloured by
-// what KIND of file it is -- one hue per language -- so the zoomed-out view
-// reads as regions of C++, of tests, of build files. Colouring clips by their
-// four storage types (text / code / url / image) gives only four hues, and all
-// 649 real clips have source = 'clipboard', so there was no second dimension
-// to colour by. That is most of why the archive view looked flat.
-//
-// Detecting the language of code clips, and splitting prose from one-line
-// snippets, gives a dozen categories -- and they are categories you actually
-// think in ("that SQL I copied on Tuesday").
+// A zoomed-out mosaic only reads as regions if every box is coloured by what
+// KIND of thing it holds. Colouring clips by their four storage types (text /
+// code / url / image) gives four hues and a flat view. Detecting the language
+// of code clips, and splitting prose from one-line snippets, gives a dozen
+// categories -- and they are categories you actually think in ("that SQL I
+// copied on Tuesday").
 //
 // Detection is heuristic and deliberately cheap: it reads at most the first
 // 4 KB of a clip, once, and the result is cached per clip object.
@@ -128,10 +124,9 @@ function detect(clip) {
 
   if (clip.type === "url" || /^https?:\/\/\S+$/i.test(trimmed)) return CATEGORIES.url;
   if (clip.type === "code") {
-    // The capture-time "code" label is unreliable: measured on real history,
-    // 81 of 245 code-labelled clips were chats, prompts, plans and reports
-    // (English and Hinglish), and ~12 more were terminal sessions filed under
-    // "Other code", JSON or SQL. The order below is what fixed them:
+    // The capture-time "code" label is not reliable enough to colour by:
+    // chats, prompts, plans and reports (English and Hinglish) get it, and so
+    // do terminal sessions. So the label is checked again, in this order:
     //   1. a terminal session is Shell, whatever it quotes
     //   2. otherwise, text that reads as prose is prose -- even if it mentions
     //      a command or keyword, which is all it took to win the language vote --
@@ -246,9 +241,8 @@ function scoreLanguage(src) {
 // ── Terminal sessions ────────────────────────────────────────────────────────
 // A line that is a prompt, a command typed at one, or characteristic command
 // output. Judged per LINE, never "anywhere in the clip": a chat message that
-// quotes one command is still a chat -- matching anywhere is exactly how
-// Hinglish replies like "ye rahe commands, ek-ek karke run karo" were being
-// filed as Shell.
+// quotes one command is still a chat. Matching anywhere would file a reply
+// like "ye rahe commands, ek-ek karke run karo" as Shell.
 const TERMINAL_LINE = [
   /^\s*(?:\([\w.-]+\)\s+)?[A-Za-z]?:\\[^>\n]*>/,            // C:\Users\demo>ping   (cmd; drive letter may be cut)
   /^.{0,24}?\bPS\s+[A-Za-z]:\\[^>\n]*>/,                    // (.venv) PS D:\proj>  (PowerShell)
@@ -323,10 +317,9 @@ function looksLikeSql(src, lang = scoreLanguage(src)) {
 
 // ── Prose ────────────────────────────────────────────────────────────────────
 // Language-agnostic on purpose. A test built on English function words scores
-// a Hinglish message ("Theek hai, seedha jawab: ...") at zero, and that is a
-// large share of real clipboard history. What separates prose from code in any
-// language is its shape: few code symbols, mostly plain words, sentence-length
-// lines, and lines that do not end in ; { } ( or ,.
+// a Hinglish message ("Theek hai, seedha jawab: ...") at zero. What separates
+// prose from code in any language is its shape: few code symbols, mostly plain
+// words, sentence-length lines, and lines that do not end in ; { } ( or ,.
 
 // Markdown structure -- bullets, numbering, headings, table pipes, arrows and
 // dashes. Counted neither for nor against prose: a bulleted plan is still prose.
@@ -382,11 +375,10 @@ function proseStats(src) {
 }
 
 /**
- * Checked against every text- and code-labelled clip in real history (540),
- * reviewing each clip whose label changed. What it deliberately leaves as code:
- * messages that are mostly commands, and agent transcripts dominated by command
- * output -- they sit right on the symbol threshold beside real Python modules
- * (0.036-0.040 vs 0.037), so any rule loose enough to take them takes those too.
+ * What it deliberately leaves as code: messages that are mostly commands, and
+ * transcripts dominated by command output. They sit right on the symbol
+ * threshold beside real Python modules (0.036-0.040 vs 0.037), so any rule
+ * loose enough to take them takes those too.
  */
 function looksLikeProse(src) {
   const f = proseStats(src);

@@ -81,7 +81,7 @@
     wireEvents();
     await Promise.all([loadWorkspaces(), loadCaptureState(), loadDevFlag()]);
     // The app opens on today: the current day is the working place, and the
-    // rest of history is one zoom-out away (planning/chat-decisions.md).
+    // rest of history is one zoom-out away.
     await tc.setSource(makeSource(), { view: "today" });
   }
 
@@ -192,7 +192,7 @@
   }
 
   // ── Info panel ─────────────────────────────────────────────────────────────
-  // Like the reference's side panel: where you are, and what is under the
+  // Where you are, and what is under the
   // cursor. Falls back to the selection, then to wherever the camera is.
   function scheduleInfo() {
     if (infoRaf != null) return;
@@ -246,7 +246,7 @@
 
   function onFrame(s) {
     if (!hovered && !selectedNode) scheduleInfo(); // the camera moved
-    // Where the zoom is, on the roadmap's ladder (500% years ... 100% clips).
+    // Where the zoom is, on the ladder from 500% years to 100% clips.
     // A development run adds what the frame cost.
     const text = dev
       ? `draw ${s.ms.toFixed(1)} ms · ${s.level} ${s.zoomLabel} · ${s.cards} cards · ` +
@@ -523,8 +523,8 @@
 
   // Colours are set through CSSOM (element.style), never as style="..." in an
   // HTML string: the page's CSP is style-src 'self', which blocks inline style
-  // attributes -- the legend and info-panel swatches rendered colourless until
-  // this was changed. CSSOM writes are not affected by style-src.
+  // attributes, so the swatches would render colourless. CSSOM writes are not
+  // affected by style-src.
   function swatch(color) {
     const sw = document.createElement("span");
     sw.className = "sw";

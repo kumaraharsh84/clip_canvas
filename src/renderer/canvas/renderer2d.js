@@ -4,7 +4,7 @@
 // A CARD IS READ AT FOUR DISTANCES, AND IS DRAWN DIFFERENTLY AT EACH
 //
 //   a few px       one solid tile in its category colour. Thousands of these
-//                  are the zoomed-out mosaic -- the reference's opening shot.
+//                  are the zoomed-out mosaic.
 //   tens of px     its text as a pre-painted texture of coloured dashes, one
 //                  drawImage per card (see texturecache.js).
 //   lines >= 2.4px the same dashes drawn live, per token, so they stay crisp.
@@ -171,7 +171,7 @@ class Renderer2D {
       ctx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1);
     }
 
-    // The current hour stays marked, per the roadmap.
+    // The current hour stays marked.
     if (this.nowKey && n.key === this.nowKey && sw > 4 && sh > 4) {
       ctx.strokeStyle = this.theme.now;
       ctx.lineWidth = 2;
@@ -526,7 +526,7 @@ class Renderer2D {
     const lastVis = Math.ceil((this.H - by) / lineH) + 1;
     // Dashes are snapped to whole pixels. A 1-2px bar at a fractional y is all
     // anti-aliased edge, and a card full of them reads as a grey smear rather
-    // than as the crisp lines the reference shows.
+    // than as crisp lines.
     const barH = Math.max(1, Math.round(lineH * 0.5));
     const barOff = Math.round((lineH - barH) / 2);
     const paths = real ? null : new Map();

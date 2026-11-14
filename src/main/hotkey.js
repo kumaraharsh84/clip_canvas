@@ -4,13 +4,13 @@
 // written.
 //
 // WHY WIN+ALT+V
-// A global shortcut is taken from EVERY app while ClipCanvas runs. The first
-// default, Ctrl+Shift+V, is "paste as plain text" in Chrome, Edge and Word,
-// "paste" in Windows Terminal and "Markdown preview" in VS Code -- all of them
-// stopped working. Win+Alt+V sits beside Windows' own clipboard history
-// (Win+V), and apps almost never use Win shortcuts. Ctrl+Alt+Space was tried
-// first and was already held by another program on the machine this was
-// written on -- which is why there is a list of fallbacks, not one default.
+// A global shortcut is taken from EVERY app while ClipCanvas runs. The obvious
+// choice, Ctrl+Shift+V, is "paste as plain text" in Chrome, Edge and Word,
+// "paste" in Windows Terminal and "Markdown preview" in VS Code, and would
+// stop working in all of them. Win+Alt+V sits beside Windows' own clipboard
+// history (Win+V), and apps almost never use Win shortcuts. Any shortcut may
+// already be held by another program, which is why there is a list of
+// fallbacks, not one default.
 //
 // Accelerators are kept in one canonical form -- modifiers in the order Super
 // (Win), Ctrl, Alt, Shift, as Windows writes them, then one key in Electron's

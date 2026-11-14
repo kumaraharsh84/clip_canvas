@@ -1,9 +1,9 @@
 // ─── src/renderer/canvas/controls.js ─────────────────────────────────────────
 // Flying around the Time Canvas.
 //
-// What makes the reference feel like flight rather than like a map viewer is
-// that nothing snaps: zoom eases toward where the wheel asked for, a released
-// drag keeps drifting, and moving between levels is an animated camera move.
+// It should feel like flight rather than like a map viewer, so nothing snaps:
+// zoom eases toward where the wheel asked for, a released drag keeps
+// drifting, and moving between levels is an animated camera move.
 //
 //   wheel / pinch    smooth zoom toward the cursor
 //   drag             pan, with inertia when released while moving
@@ -13,7 +13,7 @@
 //   F / Home         fit everything        + / -   zoom        arrows   pan
 //   T                today                 Backspace   fly out one level
 //
-// Wheel direction is unchanged from the DOM version: deltaY > 0 zooms out.
+// Wheel direction: deltaY > 0 zooms out.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DBL_MS = 320;

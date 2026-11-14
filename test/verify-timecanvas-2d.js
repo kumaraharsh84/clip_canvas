@@ -310,8 +310,8 @@ ok("no card dominates a busy day", worstShare < 0.3,
    `largest card ${(worstShare * 100).toFixed(1)}% of its day's cards (days with 20+ clips)`);
 
 // ── 8. A new copy changes only its own day ───────────────────────────────────
-// The property the old whole-archive treemap lacked: measured on 5,000 clips,
-// one new clip moved all 5,000. Here every day is laid out from its own clips
+// A layout of the whole history at once would move every card on every copy.
+// Here every day is laid out from its own clips
 // alone, so adding one to a day -- and re-laying out EVERY day from scratch,
 // the worst case -- must leave every other day's cards exactly where they were.
 console.log("\n-- a new copy changes only its own day --");

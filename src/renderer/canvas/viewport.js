@@ -5,8 +5,8 @@
 // CSS pixels inside the canvas element. `scale` is the world->screen multiplier:
 // higher scale = zoomed IN = closer to the clips.
 //
-// NOTE ON THE ZOOM LABEL: the roadmap labels zoom the
-// AutoCAD way, where a HIGHER percentage means zoomed OUT:
+// NOTE ON THE ZOOM LABEL: the label shown to the user counts the AutoCAD way,
+// where a HIGHER percentage means zoomed OUT:
 //   500% years | 400% months | 300% days | 200% hours | 100% clips
 // That is the inverse of `scale`, so the label is derived in lod.js and the two
 // must never be conflated. Internally everything uses `scale`.

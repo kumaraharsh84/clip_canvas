@@ -1,10 +1,9 @@
 // ─── src/main/main.js ────────────────────────────────────────────────────────
 // Electron main process: windows, tray, global hotkey, clipboard watcher, IPC.
 //
-// RECONSTRUCTED after the original source was lost. Behaviour follows what the
-// README and planning notes describe and what test/*.js expects:
-//   - starts as a tray utility; the panel may start hidden
-//   - a global shortcut toggles the panel (Win+Alt+V unless changed in
+// How the app behaves:
+//   - it starts as a tray utility; the window may start hidden
+//   - a global shortcut toggles the window (Win+Alt+V unless changed in
 //     Settings, or taken; see hotkey.js for why it is not Ctrl+Shift+V)
 //   - closing the window hides it, it never quits the app
 //   - every IPC handler answers { success, data } / { success, error }
@@ -89,12 +88,11 @@ function start() {
   // No "hotkey" means the defaults (hotkey.js); one is saved only when chosen.
   settings = new Settings(path.join(userData, "settings.json"), { capturePaused: false });
 
-  // Start with Windows by default (the planning decision), once; after that
-  // the tray checkbox decides. Re-registered on every launch so the entry
-  // follows the app if its folder moves -- the old Startup-folder .vbs
-  // hard-coded a path, and silently stopped working when the project moved.
-  // A dev run (npm run dev) leaves the entry alone either way: it used to
-  // apply "off" (no setting yet) and delete the entry a normal run had made.
+  // Start with Windows by default, once; after that the tray checkbox
+  // decides. Re-registered on every launch so the entry follows the app if
+  // its folder moves. A dev run (npm run dev) leaves the entry alone either
+  // way: with no setting yet it would apply "off" and delete the entry a
+  // normal run had made.
   if (!IS_DEV) {
     if (settings.get("autoStart") === undefined) settings.set("autoStart", true);
     applyAutoStart(!!settings.get("autoStart"));
