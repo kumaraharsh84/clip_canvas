@@ -90,6 +90,9 @@
       .map((w) => `<option value="${w.id}">${esc(w.name)} (${w.clip_count})</option>`)
       .join("");
 
+    // One workspace is no choice: the control appears with the second one.
+    el.workspace.parentElement.hidden = ws.length < 2;
+
     const active = ws.find((w) => w.is_default && w.clip_count > 0) ||
                    ws.find((w) => w.clip_count > 0) || ws[0];
     if (active) {
@@ -103,6 +106,7 @@
     const boards = await api.boards.list(Number(el.workspace.value));
     el.board.innerHTML = '<option value="">All boards</option>' +
       boards.map((b) => `<option value="${b.id}">${esc(b.name)} (${b.clip_count})</option>`).join("");
+    el.board.parentElement.hidden = boards.length === 0;
   }
 
   /** What the canvas loads through: the current workspace, board and filter. */
