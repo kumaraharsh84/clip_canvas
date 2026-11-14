@@ -249,9 +249,9 @@ class ClipDatabase {
   }
 
   /**
-   * Exactly one default workspace: startup captures into it. The first seed
-   * marked Personal, Research and College all default, and the first of them
-   * alphabetically -- College -- won. The oldest default keeps the flag.
+   * Exactly one default workspace: startup captures into it. An early seed
+   * marked every workspace default, and the first of them alphabetically won.
+   * The oldest default keeps the flag.
    */
   oneDefaultWorkspace() {
     this.db.prepare(`
@@ -266,20 +266,9 @@ class ClipDatabase {
     const count = db.prepare("SELECT COUNT(*) n FROM workspaces").get().n;
     if (count > 0) return;
 
-    const ins = db.prepare(
-      "INSERT INTO workspaces (name, slug, is_default) VALUES (?, ?, ?)"
-    );
-    const insBoard = db.prepare(
-      "INSERT OR IGNORE INTO boards (workspace_id, name) VALUES (?, ?)"
-    );
-    db.transaction(() => {
-      // Only Personal is the default: new clips go to the default workspace.
-      ins.run("Personal", "personal", 1);
-      const research = ins.run("Research", "research", 0).lastInsertRowid;
-      const college = ins.run("College", "college", 0).lastInsertRowid;
-      for (const b of ["MongoDB", "React", "APIs"]) insBoard.run(research, b);
-      for (const b of ["Final Year Project", "Internship", "Viva"]) insBoard.run(college, b);
-    })();
+    // One workspace, the default: new clips go to the default workspace.
+    db.prepare("INSERT INTO workspaces (name, slug, is_default) VALUES (?, ?, ?)")
+      .run("Personal", "personal", 1);
   }
 
   // ── Workspaces ─────────────────────────────────────────────────────────────

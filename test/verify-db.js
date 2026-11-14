@@ -61,7 +61,9 @@ function run() {
     const p = path.join(TMP, "defaults.db");
     const store = path.join(TMP, "defaults-storage");
     let db = new ClipDatabase(p, store);
-    db.db.prepare("UPDATE workspaces SET is_default = 1").run(); // as the first seed left them
+    db.createWorkspace("Archive");
+    db.createWorkspace("Work");
+    db.db.prepare("UPDATE workspaces SET is_default = 1").run(); // as an early seed left them
     db.close();
     db = new ClipDatabase(p, store);
     const defs = db.listWorkspaces().filter((w) => w.is_default);
