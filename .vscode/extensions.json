@@ -1,8 +1,6 @@
 {
   "recommendations": [
     "dbaeumer.vscode-eslint",
-    "esbenp.prettier-vscode",
-    "formulahendry.auto-rename-tag",
-    "christian-kohler.path-intellisense"
+    "editorconfig.editorconfig"
   ]
 }
