@@ -38,7 +38,7 @@ const CORS = { "access-control-allow-origin": "*" };
 
 function handleAssetProtocol(protocol, storageDir) {
   const root = path.resolve(storageDir);
-  protocol.handle(ASSET_SCHEME, (request) => {
+  protocol.handle(ASSET_SCHEME, async (request) => {
     const url = new URL(request.url);
     const rel = decodeURIComponent(url.hostname + url.pathname).replace(/^\/+/, "");
     const full = path.resolve(root, rel);
@@ -50,8 +50,11 @@ function handleAssetProtocol(protocol, storageDir) {
     if (!inside || inside.startsWith("..") || path.isAbsolute(inside)) {
       return new Response("forbidden", { status: 403, headers: CORS });
     }
+    // Not readFileSync: a pan across a day of screenshots asks for dozens of
+    // files, and each blocking read held up the clipboard watcher and every
+    // other window's requests on this process.
     try {
-      const data = fs.readFileSync(full);
+      const data = await fs.promises.readFile(full);
       return new Response(data, { headers: { ...CORS, "content-type": mimeFor(full) } });
     } catch (_) {
       return new Response("not found", { status: 404, headers: CORS });
