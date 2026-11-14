@@ -83,7 +83,7 @@ function build(outFile) {
 }
 
 if (require.main === module) {
-  const out = process.argv[2] || path.join(__dirname, "..", "..", "..", "demo", "timecanvas.bundle.js");
+  const out = process.argv[2] || path.join(__dirname, "..", "timecanvas.bundle.js");
   fs.mkdirSync(path.dirname(out), { recursive: true });
   const bytes = build(out);
   console.log(`built ${out} (${(bytes / 1024).toFixed(1)} KB)`);

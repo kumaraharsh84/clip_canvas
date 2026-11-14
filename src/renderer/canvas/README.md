@@ -166,11 +166,12 @@ Open <http://localhost:8790> and pick up to 40,000 synthetic clips.
 
 ## Rebuild the bundle after editing any module
 
-The renderer runs under `contextIsolation`, so it loads a bundle, not modules:
+The renderer runs under `contextIsolation`, so it loads a bundle, not modules.
+The demo page loads the same file:
 
 ```bash
-node src/renderer/canvas/build.js src/renderer/timecanvas.bundle.js
-node src/renderer/canvas/build.js demo/timecanvas.bundle.js
+npm run bundle          # writes src/renderer/timecanvas.bundle.js
+npm run bundle:check    # what CI runs: rebuild, then fail on any difference
 ```
 
 ## Notes
