@@ -88,8 +88,8 @@ npm run build   # dist/ClipCanvas Setup <version>.exe
 
 - **Opens on today.** The current day is outlined in green. Scroll out for the
   month, the year, and every year you have.
-- **Top bar** — choose the workspace and board, and show Active, Starred,
-  Pinned, Archived, Trash or All clips. *Capturing* shows whether copies are
+- **Top bar** — show Active, Starred, Pinned, Archived, Trash or All clips,
+  and choose the workspace and board once there is more than one. *Capturing* shows whether copies are
   being saved; click it to pause. *Today* and *Fit* move the camera. New clips
   are saved to the active workspace; one named Personal is created on first
   run.
@@ -110,12 +110,16 @@ npm run build   # dist/ClipCanvas Setup <version>.exe
   clipboard has changed (`GetClipboardSequenceNumber`, through
   [koffi](https://koffi.dev)) — about a microsecond — and reads the clipboard
   only when it has. Images are checked first and saved as PNG under
-  `storage/images/YYYY/MM/`; text is classified as a link, code or prose and
-  stored in SQLite. Whatever is already on the clipboard when the app starts is
+  `storage/images/YYYY/MM/`, with a 512 px thumbnail beside them for the
+  zoomed-out canvas; the same picture copied twice is two clips and one
+  file. Text is classified as a link, code or prose and stored in SQLite. Whatever is already on the clipboard when the app starts is
   not captured, and neither is anything a password manager marks as private.
   Capture can be paused from the tray or the top bar.
 - **Storage.** [better-sqlite3](https://github.com/WiseLibs/better-sqlite3),
   with additive migrations and an FTS5 search index kept in step by triggers.
+  Everything that runs on every copy or every keystroke is answered from an
+  index or from a bounded number of rows, so it does not slow down as the
+  history grows.
   Images reach the window through a `clip-asset://` protocol that resolves
   nothing outside the storage folder.
 - **Canvas.** A canvas-2D engine in [`src/renderer/canvas`](src/renderer/canvas/README.md):
@@ -142,10 +146,10 @@ source tree, where every file is a box and every box is readable up close.
 | `npm start` | run the app |
 | `npm run dev` | run it with DevTools, and show the window at launch |
 | `npm run build` | build the Windows installer into `dist/` |
-| `npm test` | classification, calendar, layout, clipboard watcher, image-protocol and shortcut checks, on plain Node |
+| `npm test` | classification, calendar, layout, clipboard watcher, image-protocol, shortcut and IPC checks, on plain Node |
 | `npm run lint` | ESLint (correctness rules only) |
 | `npm run test:db` | database migration and per-day queries (under Electron) |
-| `npm run verify:app` | check the real app end to end, against a copy of your database |
+| `npm run verify:app` | check the real app end to end, against a copy of your database, or synthetic clips when there is none |
 | `npm run bundle` | rebuild the canvas bundle after editing `src/renderer/canvas/` |
 | `npm run demo` | serve the demo at <http://localhost:8790> |
 | `npm run screenshots` | retake the screenshots in `docs/` from the demo |
@@ -155,16 +159,19 @@ source tree, where every file is a box and every box is readable up close.
 The renderer runs under context isolation, so it loads one prebuilt bundle
 instead of modules; the demo page loads the same file. GitHub Actions runs the
 lint and the plain-Node checks on every push to `main` and every pull request,
-and fails if the committed bundle does not match its sources.
+fails if the committed bundle does not match its sources, and on Windows runs
+the database and end-to-end checks under Electron.
 
 ## Project structure
 
 ```text
 src/
   main/
-    main.js            windows, tray, global shortcut, start with Windows, IPC
+    main.js            windows, tray, global shortcut, start with Windows
+    ipc.js             every channel the windows may call, and what answers it
     hotkey.js          the shortcut's defaults and rules
     clipwatch.js       clipboard watcher: change detection, private copies skipped
+    images.js          how an image is stored: picture, thumbnail, one file per picture
     log.js             the log file
     settings.js        small settings file (shortcut, pause, start with Windows)
     db.js              SQLite data layer
@@ -194,6 +201,7 @@ Everything is stored in Electron's user-data folder:
 ```text
 C:\Users\<you>\AppData\Roaming\clipcanvas\clipcanvas.db     the database
 C:\Users\<you>\AppData\Roaming\clipcanvas\storage\images\   captured images
+C:\Users\<you>\AppData\Roaming\clipcanvas\storage\thumbs\   their thumbnails
 C:\Users\<you>\AppData\Roaming\clipcanvas\logs\              clipcanvas.log: errors and events
 ```
 

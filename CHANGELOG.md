@@ -25,6 +25,20 @@ Housekeeping before the repository goes public. Nothing new in the app.
   index alone, a day's clips are found by their day, and the duplicate
   check looks at the newest rows only. Database schema 7: one index
   replaces another, on first launch.
+- **Search on a broad query** ("t", "the") scored every match: 0.3 to 1
+  second per keystroke at 30,000 clips, now 30 to 70 ms. A query matching
+  more than 1,000 clips is ranked among its newest 1,000; one matching
+  fewer is ranked in full, as before.
+- **Images were decoded at full size for the zoomed-out canvas**, and read
+  in a way that blocked the main process. A 512 px thumbnail is now saved
+  with each captured image and used up to that width; images stored
+  earlier get theirs in the background after launch. Reads no longer
+  block.
+- **The same picture copied twice was stored twice.** It is now two clips
+  and one file, and *Empty trash* removes a file only with the last clip
+  that used it. Database schema 8.
+- Day counts under the Starred and Pinned filters, and classifying a copied
+  text twice.
 
 ### Changed
 
@@ -38,6 +52,16 @@ Housekeeping before the repository goes public. Nothing new in the app.
   token, a cached npm download, and superseded runs cancelled.
 - The workspace settings no longer format on save: the code is laid out by
   hand (see `eslint.config.js`).
+- The workspace and board dropdowns appear only when there is something to
+  choose, and the corner readout shows where the zoom is (`months · 400%`)
+  instead of draw timings, which are kept for `npm run dev`.
+- One table of IPC channels (`src/main/ipc.js`), registered by the app and
+  by its end-to-end check; `test/verify-ipc.js` holds the preload's
+  allow-list to it.
+- `npm run verify:app` runs on a fresh clone: without a database to copy
+  it builds one from synthetic clips. CI runs it, and the database check,
+  under Electron on Windows.
+- The README says what is stored, what is not, and who can read it.
 
 ### Removed
 

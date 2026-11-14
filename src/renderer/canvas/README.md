@@ -151,7 +151,8 @@ busiest day, lays out every day again, and checks that no card in any other day
 moved. Measured at 20,000 clips over 88 days: 669 ms to lay out every day,
 0 of 18,680 cards moved.
 
-The second drives the real app against a **copy** of your database: it opens
+The second drives the real app against a **copy** of your database (or, with
+`--synthetic` or when there is none, against synthetic clips): it opens
 on today, loads a year, adds a clip and checks nothing outside today moved,
 reveals a clip through search, and writes screenshots. It renders offscreen, because a hidden
 window stops producing frames and `capturePage` returns a stale one.
