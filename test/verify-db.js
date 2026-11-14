@@ -176,6 +176,10 @@ function run() {
     const counts = plansOf(db, () => db.getDayCounts({ workspaceId: ws }));
     ok("day counts are answered from an index alone",
        counts.length === 1 && /COVERING INDEX idx_clips_day_counts/.test(counts[0]), counts.join(" || "));
+    for (const filter of ["starred", "pinned", "archived", "all"]) {
+      const p = plansOf(db, () => db.getDayCounts({ workspaceId: ws, filter }));
+      ok(`and under the ${filter} filter`, p.length === 1 && /COVERING INDEX/.test(p[0]), p.join(" || "));
+    }
     const dayPlans = plansOf(db, () => db.getClipsForDays({ workspaceId: ws, days: [{ year: 2026, month: 6, day: 3 }] }));
     ok("a day's clips are found by their day, not by scanning time",
        dayPlans.length === 2 && dayPlans.every((p) => /day=\?/.test(p)), dayPlans.join(" || "));

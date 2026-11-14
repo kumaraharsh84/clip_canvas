@@ -198,6 +198,20 @@ class ClipDatabase {
         WHERE type = 'image' AND asset_path IS NOT NULL AND thumbnail_path IS NULL;
     `);
 
+    // v8 as well: getDayCounts under the Starred and Pinned filters. Those two
+    // columns are not in idx_clips_day_counts, so the counts fell back to the
+    // table. Partial again -- only starred or pinned clips are in them.
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_clips_starred_days
+        ON clips(workspace_id, year, month, day, category, type,
+                 created_at, updated_at, deleted_at, is_starred)
+        WHERE is_starred = 1;
+      CREATE INDEX IF NOT EXISTS idx_clips_pinned_days
+        ON clips(workspace_id, year, month, day, category, type,
+                 created_at, updated_at, deleted_at, is_pinned)
+        WHERE is_pinned = 1;
+    `);
+
     this.migrateFts();
     this.backfillTimeColumns();
     this.backfillCategories();
