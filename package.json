@@ -28,7 +28,7 @@
     "dev": "electron . --dev",
     "build": "electron-builder",
     "postinstall": "electron-builder install-app-deps",
-    "test": "node test/verify-classify.js && node test/verify-timecanvas-2d.js && node test/verify-clipwatch.js && node test/verify-asset-protocol.js && node test/verify-hotkey.js",
+    "test": "node test/verify-classify.js && node test/verify-timecanvas-2d.js && node test/verify-clipwatch.js && node test/verify-asset-protocol.js && node test/verify-hotkey.js && node test/verify-ipc.js",
     "bundle": "node src/renderer/canvas/build.js",
     "bundle:check": "npm run bundle && git diff --exit-code -- src/renderer/timecanvas.bundle.js",
     "demo": "node demo/serve.js",

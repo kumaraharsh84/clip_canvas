@@ -34,6 +34,7 @@ const { ClipboardWatcher } = require("./clipwatch");
 const { Settings } = require("./settings");
 const log = require("./log");
 const hotkeys = require("./hotkey");
+const { ipcHandlers, registerIpc: registerHandlers } = require("./ipc");
 const pkg = require("../../package.json");
 
 const IS_DEV = process.argv.includes("--dev");
@@ -470,100 +471,62 @@ function broadcast(channel, payload) {
 }
 
 // ── IPC ──────────────────────────────────────────────────────────────────────
+// The channels, and what each one answers, are in ipc.js -- the same table
+// test/verify-app.js registers. This is the real host behind them.
 function registerIpc() {
-  // Every handler returns the same envelope preload.safeInvoke unwraps, and a
-  // throw becomes { success: false } rather than an unhandled rejection that
-  // leaves the renderer waiting forever.
-  const handle = (channel, fn) => {
-    ipcMain.handle(channel, async (_e, ...args) => {
-      try {
-        return { success: true, data: await fn(...args) };
-      } catch (err) {
-        log.error(`IPC "${channel}":`, err);
-        return { success: false, error: err.message || String(err) };
+  const table = ipcHandlers({
+    db,
+    workspaceId: () => activeWorkspaceId,
+    setWorkspace: (id) => { activeWorkspaceId = id; },
+    copyBack,
+    settingsState,
+    setHotkey: (acc) => {
+      const r = applyHotkey(acc);
+      if (r.ok) {
+        // Choosing the default is the same as not choosing: it stays unsaved,
+        // so the fallbacks still apply if it is ever taken.
+        settings.set("hotkey", r.hotkey === hotkeys.DEFAULT_HOTKEY ? undefined : r.hotkey);
+        hotkeyNote = null;
+        updateTray();
+        broadcast("settings:changed", settingsState());
       }
-    });
-  };
-
-  handle("workspaces:list", () => db.listWorkspaces());
-  handle("workspaces:create", (name) => db.createWorkspace(name));
-  handle("workspaces:setActive", (id) => {
-    activeWorkspaceId = id;
-    return { ok: true, activeWorkspaceId };
-  });
-
-  handle("boards:list", (wid) => db.listBoards(wid || activeWorkspaceId));
-  handle("boards:create", ({ workspaceId, name }) =>
-    db.createBoard(workspaceId || activeWorkspaceId, name));
-  handle("boards:rename", ({ id, name }) => db.renameBoard(id, name));
-  handle("boards:delete", (id) => db.deleteBoard(id));
-
-  handle("clips:search", (opts = {}) => db.searchClips(withWorkspace(opts)));
-  handle("clips:update", ({ id, patch }) => db.updateClip(id, patch));
-  handle("clips:delete", (ids) => db.deleteClips(toArray(ids)));
-  handle("clips:restore", (ids) => db.restoreClips(toArray(ids)));
-  handle("clips:trashSummary", (opts = {}) => db.getTrashSummary(withWorkspace(opts)));
-  handle("clips:emptyTrash", (opts = {}) => db.emptyTrash(withWorkspace(opts)));
-
-  handle("clips:dayCounts", (opts = {}) => db.getDayCounts(withWorkspace(opts)));
-  handle("clips:forDays", (opts = {}) => db.getClipsForDays(withWorkspace(opts)));
-
-  /**
-   * Put a clip back on the clipboard, then tell the watcher, so it does not
-   * re-capture what we just wrote and duplicate the clip on every copy-back.
-   */
-  handle("clips:copyBack", (id) => {
-    const clip = db.getClipById(id);
-    if (!clip) throw new Error("clip not found");
-
-    if (clip.type === "image" && clip.asset_path) {
-      const img = nativeImage.createFromPath(path.join(storageDir, clip.asset_path));
-      if (img.isEmpty()) throw new Error("image asset missing");
-      clipboard.writeImage(img);
-    } else {
-      clipboard.writeText(clip.content || "");
-    }
-    if (watcher) watcher.noteOwnWrite();
-    return { ok: true, id };
-  });
-
-  handle("settings:get", () => settingsState());
-  handle("settings:setHotkey", (acc) => {
-    const r = applyHotkey(acc);
-    if (r.ok) {
-      // Choosing the default is the same as not choosing: it stays unsaved,
-      // so the fallbacks still apply if it is ever taken.
-      settings.set("hotkey", r.hotkey === hotkeys.DEFAULT_HOTKEY ? undefined : r.hotkey);
-      hotkeyNote = null;
+      return { ...r, state: settingsState() };
+    },
+    resetHotkey: () => {
+      settings.set("hotkey", undefined);
+      chooseHotkey(null);
       updateTray();
       broadcast("settings:changed", settingsState());
-    }
-    return { ...r, state: settingsState() };
+      return { ok: !!hotkeyActive, hotkey: hotkeyActive, state: settingsState() };
+    },
+    suspendHotkey: (on) => { if (on) suspendHotkey(); else resumeHotkey(); },
+    setAutoStart,
+    captureState,
+    setPaused,
+    openLog: () => { if (log.file) shell.openPath(log.file); return !!log.file; },
+    // Only the project's own page: the renderer never picks what gets opened.
+    openHomepage: () => { if (pkg.homepage) shell.openExternal(pkg.homepage); return !!pkg.homepage; },
+    openSettings,
+    openStorage: () => shell.openPath(storageDir),
+    hideWindow: () => { if (win) win.hide(); },
   });
-  handle("settings:resetHotkey", () => {
-    settings.set("hotkey", undefined);
-    chooseHotkey(null);
-    updateTray();
-    broadcast("settings:changed", settingsState());
-    return { ok: !!hotkeyActive, hotkey: hotkeyActive, state: settingsState() };
-  });
-  handle("settings:suspendHotkey", (on) => { if (on) suspendHotkey(); else resumeHotkey(); return true; });
-  handle("settings:setAutoStart", (on) => { setAutoStart(on); return settingsState(); });
-  handle("app:openLog", () => { if (log.file) shell.openPath(log.file); return { ok: !!log.file }; });
-  // Only the project's own page: the renderer never picks what gets opened.
-  handle("app:openHomepage", () => { if (pkg.homepage) shell.openExternal(pkg.homepage); return { ok: !!pkg.homepage }; });
-  handle("window:openSettings", () => { openSettings(); return null; });
-
-  handle("capture:getState", () => captureState());
-  handle("capture:setPaused", (paused) => { setPaused(paused); return captureState(); });
-
-  handle("storage:openFolder", () => { shell.openPath(storageDir); return { ok: true }; });
-
-  handle("window:hide", () => { if (win) win.hide(); return null; });
+  registerHandlers(ipcMain, table, (channel, err) => log.error(`IPC "${channel}":`, err));
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function withWorkspace(opts) {
-  return { ...opts, workspaceId: opts.workspaceId || activeWorkspaceId };
+/**
+ * Put a clip back on the clipboard, then tell the watcher, so it does not
+ * re-capture what we just wrote and duplicate the clip on every copy-back.
+ */
+function copyBack(id) {
+  const clip = db.getClipById(id);
+  if (!clip) throw new Error("clip not found");
+
+  if (clip.type === "image" && clip.asset_path) {
+    const img = nativeImage.createFromPath(path.join(storageDir, clip.asset_path));
+    if (img.isEmpty()) throw new Error("image asset missing");
+    clipboard.writeImage(img);
+  } else {
+    clipboard.writeText(clip.content || "");
+  }
+  if (watcher) watcher.noteOwnWrite();
 }
-function toArray(v) { return Array.isArray(v) ? v : [v]; }
