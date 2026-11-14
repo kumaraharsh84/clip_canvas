@@ -199,6 +199,4 @@ function runsAt(rec, i) {
   return r;
 }
 
-function clearTokenCache() { recCache.clear(); }
-
-module.exports = { tokenizeLine, tokenRecord, runsAt, clearTokenCache, KEYWORDS };
+module.exports = { tokenizeLine, tokenRecord, runsAt, KEYWORDS };

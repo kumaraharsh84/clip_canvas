@@ -214,10 +214,6 @@ const SIGNALS = {
 };
 const ORDER = ["sql", "py", "js", "css", "shell", "html"];
 
-function detectLanguage(src) {
-  return scoreLanguage(src).lang;
-}
-
 /**
  * The best-scoring language and how strongly it scored. JSON and key/value
  * config are structural checks and count as certain (score Infinity).
@@ -445,7 +441,7 @@ function hash01(v) {
 
 module.exports = {
   CATEGORIES, CATEGORY_LIST, TOKEN, BG, CLASSIFIER_VERSION,
-  categoryOf, detect, blockOf, detectLanguage, scoreLanguage,
+  categoryOf, detect, blockOf, scoreLanguage,
   looksLikeTerminal, looksLikeProse, startsLikeSource, looksLikeSql, proseStats,
   mix, rgbCss, hexToRgb,
 };

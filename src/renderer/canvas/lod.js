@@ -1,8 +1,8 @@
 // ─── src/renderer/canvas/lod.js ──────────────────────────────────────────────
 // Level-of-detail vocabulary for the Time Canvas.
 //
-// The zoom labels reproduce the roadmap ladder that the v1 check
-// test/archive/v1/verify-time-zoom.js asserted:  500% years | 400% months | 300% days | 200% hours | 100% clips
+// The zoom labels follow the roadmap ladder (planning/time-canvas-roadmap.md):
+//   500% years | 400% months | 300% days | 200% hours | 100% clips
 //
 // The level is not derived from an absolute scale: the renderer finds which
 // box currently frames the view (renderer2d.framedNode) and the level is what
@@ -25,11 +25,6 @@ function levelForDepth(depth) {
   return BY_DEPTH[Math.min(BY_DEPTH.length - 1, depth)];
 }
 
-/** Thumbnails are worth decoding once they cover a few pixels. */
-function wantsThumbnail(rect, scale) {
-  return rect.w * scale >= 10 && rect.h * scale >= 10;
-}
-
 /**
  * Decode size for a thumbnail, quantised to powers of two so panning and small
  * zoom nudges reuse the same cached bitmap instead of thrashing the decoder.
@@ -40,4 +35,4 @@ function thumbBudget(rect, scale) {
   return Math.min(1024, p2);
 }
 
-module.exports = { LEVEL, levelForDepth, wantsThumbnail, thumbBudget };
+module.exports = { LEVEL, levelForDepth, thumbBudget };

@@ -43,8 +43,6 @@
         return e.value;
       }
 
-      has(key) { return this.map.has(key); }
-
       set(key, value, cost = 1) {
         const prev = this.map.get(key);
         if (prev !== undefined) { this.cost -= prev.cost; this.map.delete(key); }
@@ -63,15 +61,6 @@
           this.cost -= e.cost;
           if (this.onEvict) this.onEvict(oldest, e.value);
         }
-      }
-
-      delete(key) {
-        const e = this.map.get(key);
-        if (!e) return false;
-        this.map.delete(key);
-        this.cost -= e.cost;
-        if (this.onEvict) this.onEvict(key, e.value);
-        return true;
       }
 
       clear() {
@@ -403,14 +392,10 @@
       return { scale: lo, fits: true, ...flowAt(lo) };
     }
 
-    function clearCaches() { wrapCache.clear(); charWidthCache.clear(); }
-    function cacheStats() { return { wrap: wrapCache.stats(), fonts: charWidthCache.size }; }
-
     module.exports = {
       charWidth, charsPerLine,
       countLines, wrapLines, cardFlow, fitCard,
       TARGET_COL_CHARS, MIN_COL_CHARS, MIN_LINES_PER_COL, MAX_COL_CHARS,
-      clearCaches, cacheStats,
     };
 
   });
@@ -631,10 +616,6 @@
       ],
     };
     const ORDER = ["sql", "py", "js", "css", "shell", "html"];
-
-    function detectLanguage(src) {
-      return scoreLanguage(src).lang;
-    }
 
     /**
      * The best-scoring language and how strongly it scored. JSON and key/value
@@ -863,7 +844,7 @@
 
     module.exports = {
       CATEGORIES, CATEGORY_LIST, TOKEN, BG, CLASSIFIER_VERSION,
-      categoryOf, detect, blockOf, detectLanguage, scoreLanguage,
+      categoryOf, detect, blockOf, scoreLanguage,
       looksLikeTerminal, looksLikeProse, startsLikeSource, looksLikeSql, proseStats,
       mix, rgbCss, hexToRgb,
     };
@@ -1072,9 +1053,7 @@
       return r;
     }
 
-    function clearTokenCache() { recCache.clear(); }
-
-    module.exports = { tokenizeLine, tokenRecord, runsAt, clearTokenCache, KEYWORDS };
+    module.exports = { tokenizeLine, tokenRecord, runsAt, KEYWORDS };
 
   });
 
@@ -1082,8 +1061,8 @@
     // ─── src/renderer/canvas/lod.js ──────────────────────────────────────────────
     // Level-of-detail vocabulary for the Time Canvas.
     //
-    // The zoom labels reproduce the roadmap ladder that the v1 check
-    // test/archive/v1/verify-time-zoom.js asserted:  500% years | 400% months | 300% days | 200% hours | 100% clips
+    // The zoom labels follow the roadmap ladder (planning/time-canvas-roadmap.md):
+    //   500% years | 400% months | 300% days | 200% hours | 100% clips
     //
     // The level is not derived from an absolute scale: the renderer finds which
     // box currently frames the view (renderer2d.framedNode) and the level is what
@@ -1106,11 +1085,6 @@
       return BY_DEPTH[Math.min(BY_DEPTH.length - 1, depth)];
     }
 
-    /** Thumbnails are worth decoding once they cover a few pixels. */
-    function wantsThumbnail(rect, scale) {
-      return rect.w * scale >= 10 && rect.h * scale >= 10;
-    }
-
     /**
      * Decode size for a thumbnail, quantised to powers of two so panning and small
      * zoom nudges reuse the same cached bitmap instead of thrashing the decoder.
@@ -1121,7 +1095,7 @@
       return Math.min(1024, p2);
     }
 
-    module.exports = { LEVEL, levelForDepth, wantsThumbnail, thumbBudget };
+    module.exports = { LEVEL, levelForDepth, thumbBudget };
 
   });
 
@@ -1133,7 +1107,7 @@
     // CSS pixels inside the canvas element. `scale` is the world->screen multiplier:
     // higher scale = zoomed IN = closer to the clips.
     //
-    // NOTE ON THE ZOOM LABEL: the roadmap (and v1's verify-time-zoom.js) label zoom the
+    // NOTE ON THE ZOOM LABEL: the roadmap labels zoom the
     // AutoCAD way, where a HIGHER percentage means zoomed OUT:
     //   500% years | 400% months | 300% days | 200% hours | 100% clips
     // That is the inverse of `scale`, so the label is derived in lod.js and the two
@@ -1178,8 +1152,6 @@
       }
 
       // ── Conversions ────────────────────────────────────────────────────────────
-      toScreenX(wx) { return (wx - this.x) * this.scale; }
-      toScreenY(wy) { return (wy - this.y) * this.scale; }
       toWorldX(sx) { return this.x + sx / this.scale; }
       toWorldY(sy) { return this.y + sy / this.scale; }
 
@@ -3160,8 +3132,7 @@
     //   F / Home         fit everything        + / -   zoom        arrows   pan
     //   T                today                 Backspace   fly out one level
     //
-    // Wheel direction is unchanged from the DOM version (deltaY > 0 zooms out),
-    // which is what the v1 check test/archive/v1/verify-time-zoom.js asserted.
+    // Wheel direction is unchanged from the DOM version: deltaY > 0 zooms out.
     // ─────────────────────────────────────────────────────────────────────────────
 
     const DBL_MS = 320;

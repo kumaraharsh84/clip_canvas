@@ -305,12 +305,8 @@ function fitCard(text, innerW, innerH, charW, lineH, colGap, minScale = 0.0005) 
   return { scale: lo, fits: true, ...flowAt(lo) };
 }
 
-function clearCaches() { wrapCache.clear(); charWidthCache.clear(); }
-function cacheStats() { return { wrap: wrapCache.stats(), fonts: charWidthCache.size }; }
-
 module.exports = {
   charWidth, charsPerLine,
   countLines, wrapLines, cardFlow, fitCard,
   TARGET_COL_CHARS, MIN_COL_CHARS, MIN_LINES_PER_COL, MAX_COL_CHARS,
-  clearCaches, cacheStats,
 };

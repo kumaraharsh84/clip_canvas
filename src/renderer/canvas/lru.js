@@ -25,8 +25,6 @@ class LRU {
     return e.value;
   }
 
-  has(key) { return this.map.has(key); }
-
   set(key, value, cost = 1) {
     const prev = this.map.get(key);
     if (prev !== undefined) { this.cost -= prev.cost; this.map.delete(key); }
@@ -45,15 +43,6 @@ class LRU {
       this.cost -= e.cost;
       if (this.onEvict) this.onEvict(oldest, e.value);
     }
-  }
-
-  delete(key) {
-    const e = this.map.get(key);
-    if (!e) return false;
-    this.map.delete(key);
-    this.cost -= e.cost;
-    if (this.onEvict) this.onEvict(key, e.value);
-    return true;
   }
 
   clear() {
