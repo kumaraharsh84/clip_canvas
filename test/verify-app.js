@@ -4,13 +4,17 @@
 // whole year loads its days, a new copy moves nothing outside today, search
 // reveals a clip in a day that was not loaded, and hours and clips render.
 //
-// A thin IPC layer stands in for
-// main.js so the tray, hotkey and clipboard watcher never start, and the REAL
+// The app's own IPC table (src/main/ipc.js) is registered over a stand-in
+// host, so the tray, hotkey and clipboard watcher never start, and the REAL
 // renderer is loaded and inspected. The clip-asset:// handler is the app's own
 // (src/main/assetProtocol.js), not a copy, so image loading is really tested.
 //
 // Usage:
-//   npx electron test/verify-app.js [--db=PATH] [--shots=DIR] [--keep-open]
+//   npx electron test/verify-app.js [--db=PATH] [--synthetic] [--shots=DIR] [--keep-open]
+//
+// It runs against a copy of your own database when there is one, and
+// otherwise -- a fresh clone, CI, or --synthetic -- against a database of
+// synthetic clips that test/seed-db.js builds in the temp folder.
 //
 // --shots=DIR writes today.png, overview.png, month.png, hour.png, clip.png
 // and settings.png. The window renders
@@ -18,11 +22,11 @@
 // capturePage then returns a stale one -- an earlier version of this harness
 // photographed the start-up view no matter where the camera had flown.
 //
-// SAFETY: runs against a COPY of the database. It never writes to
+// SAFETY: a real database is only ever COPIED. Nothing here writes to
 // %APPDATA%/clipcanvas/clipcanvas.db.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { app, BrowserWindow, ipcMain, protocol, globalShortcut } = require("electron");
+const { app, BrowserWindow, ipcMain, protocol, globalShortcut, nativeImage } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -30,6 +34,8 @@ const os = require("os");
 const { ClipDatabase } = require("../src/main/db");
 const { registerAssetScheme, handleAssetProtocol } = require("../src/main/assetProtocol");
 const hotkeys = require("../src/main/hotkey");
+const { ipcHandlers, registerIpc: registerHandlers } = require("../src/main/ipc");
+const { seedDatabase } = require("./seed-db");
 
 const argv = process.argv.slice(2);
 const flag = (n, d) => {
@@ -43,6 +49,10 @@ const SHOTS = flag("shots", null);
 const OSR = !KEEP_OPEN && !argv.includes("--no-osr");
 
 app.name = "clipcanvas";
+// Its own browser profile: the running app holds the real one, and this
+// harness has no business in it. (The database is found through appData.)
+const PROFILE = fs.mkdtempSync(path.join(os.tmpdir(), "clipcanvas-verify-profile-"));
+app.setPath("userData", PROFILE);
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
@@ -52,6 +62,7 @@ registerAssetScheme(protocol);
 const LIVE_DB = path.join(app.getPath("appData"), "clipcanvas", "clipcanvas.db");
 const LIVE_STORE = path.join(app.getPath("appData"), "clipcanvas", "storage");
 const SRC_DB = flag("db", LIVE_DB);
+const SYNTHETIC = argv.includes("--synthetic") || !fs.existsSync(SRC_DB);
 
 let failures = 0;
 const ok = (name, cond, detail) => {
@@ -71,70 +82,62 @@ function copyDb() {
 
 const settingsCalls = [];
 
-function registerIpc(db, workspaceId) {
-  const handle = (channel, fn) => {
-    ipcMain.handle(channel, async (_e, ...args) => {
-      try { return { success: true, data: await fn(...args) }; }
-      catch (err) {
-        console.error(`[verify] IPC "${channel}":`, err.message);
-        return { success: false, error: err.message };
-      }
-    });
-  };
-  const ws = (o = {}) => ({ ...o, workspaceId: o.workspaceId || workspaceId });
-
-  handle("workspaces:list", () => {
+/**
+ * The app's channels, answered from `db`, with stand-ins for everything that
+ * would reach outside this process: no shortcut is taken, nothing is written
+ * to the clipboard, and Empty trash only counts.
+ */
+function registerIpc(db, workspaceId, storageDir) {
+  const view = Object.create(db);
+  view.listWorkspaces = () => {
     const all = db.listWorkspaces();
     return all.filter((w) => w.id === workspaceId).concat(all.filter((w) => w.id !== workspaceId));
-  });
-  handle("workspaces:setActive", () => ({ ok: true, activeWorkspaceId: workspaceId }));
-  handle("workspaces:create", (name) => db.createWorkspace(name));
-  handle("boards:list", (id) => db.listBoards(id || workspaceId));
-
-  handle("clips:search", (o = {}) => db.searchClips(ws(o)));
-  handle("clips:update", ({ id, patch }) => db.updateClip(id, patch));
-  handle("clips:delete", (ids) => db.deleteClips([].concat(ids)));
-  handle("clips:restore", (ids) => db.restoreClips([].concat(ids)));
-  handle("clips:copyBack", (id) => ({ ok: true, id }));
-  handle("clips:trashSummary", (o = {}) => db.getTrashSummary(ws(o)));
-  handle("clips:emptyTrash", (o = {}) => db.getTrashSummary(ws(o))); // read-only here
-  handle("clips:dayCounts", (o = {}) => db.getDayCounts(ws(o)));
-  handle("clips:forDays", (o = {}) => db.getClipsForDays(ws(o)));
-  handle("capture:getState", () => ({ paused: false }));
-  handle("capture:setPaused", (p) => ({ paused: !!p }));
+  };
+  view.emptyTrash = (o) => db.getTrashSummary(o);
 
   // The Settings window. setHotkey runs the app's real rules (hotkey.js) but
   // registers nothing: this harness must not take a shortcut from the desktop.
   let hotkey = hotkeys.DEFAULT_HOTKEY;
   let saved = null;
   let autoStart = true;
+  let paused = false;
   const settingsState = () => ({
     hotkey, hotkeySaved: saved, hotkeyDefault: hotkeys.DEFAULT_HOTKEY, hotkeyNote: null, autoStart, dev: false,
-    capture: { paused: false, error: false },
-    storageDir: LIVE_STORE, logFile: path.join(os.tmpdir(), "clipcanvas.log"),
+    capture: { paused, error: false },
+    storageDir, logFile: path.join(os.tmpdir(), "clipcanvas.log"),
     stats: { clips: 649, dbBytes: 5.2e6, imageBytes: 1.24e8, images: 84 },
     version: "0.0.0-verify", versions: process.versions, homepage: "https://github.com/kumaraharsh84/clip_canvas",
   });
-  handle("settings:get", () => settingsState());
-  handle("settings:setHotkey", (acc) => {
-    settingsCalls.push(acc);
-    const r = hotkeys.check(acc);
-    if (r.ok) { hotkey = r.hotkey; saved = r.hotkey === hotkeys.DEFAULT_HOTKEY ? null : r.hotkey; }
-    return { ...r, state: settingsState() };
+
+  const table = ipcHandlers({
+    db: view,
+    workspaceId: () => workspaceId,
+    setWorkspace() {},
+    copyBack() {},
+    settingsState,
+    setHotkey: (acc) => {
+      settingsCalls.push(acc);
+      const r = hotkeys.check(acc);
+      if (r.ok) { hotkey = r.hotkey; saved = r.hotkey === hotkeys.DEFAULT_HOTKEY ? null : r.hotkey; }
+      return { ...r, state: settingsState() };
+    },
+    resetHotkey: () => {
+      settingsCalls.push("reset");
+      hotkey = hotkeys.DEFAULT_HOTKEY;
+      saved = null;
+      return { ok: true, hotkey, state: settingsState() };
+    },
+    suspendHotkey: (on) => { settingsCalls.push(on ? "suspend" : "resume"); },
+    setAutoStart: (on) => { autoStart = !!on; },
+    captureState: () => ({ paused, error: false }),
+    setPaused: (p) => { paused = !!p; },
+    openLog: () => true,
+    openHomepage: () => true,
+    openSettings() {},
+    openStorage() {},
+    hideWindow() {},
   });
-  handle("settings:resetHotkey", () => {
-    settingsCalls.push("reset");
-    hotkey = hotkeys.DEFAULT_HOTKEY;
-    saved = null;
-    return { ok: true, hotkey, state: settingsState() };
-  });
-  handle("settings:suspendHotkey", (on) => { settingsCalls.push(on ? "suspend" : "resume"); return true; });
-  handle("settings:setAutoStart", (on) => { autoStart = !!on; return settingsState(); });
-  handle("app:openLog", () => ({ ok: true }));
-  handle("app:openHomepage", () => ({ ok: true }));
-  handle("window:openSettings", () => null);
-  handle("storage:openFolder", () => ({ ok: true }));
-  handle("window:hide", () => null);
+  registerHandlers(ipcMain, table, (channel, err) => console.error(`[verify] IPC "${channel}":`, err.message));
 }
 
 // ── Probes (run inside the real renderer) ────────────────────────────────────
@@ -388,21 +391,26 @@ const SETTINGS = `(async () => {
 })()`;
 
 app.whenReady().then(async () => {
-  if (!fs.existsSync(SRC_DB)) {
-    console.error("[verify] no database at", SRC_DB);
-    app.exit(1);
-    return;
+  let db, dbPath, storageDir, tmpDir = null;
+  if (SYNTHETIC) {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "clipcanvas-verify-"));
+    dbPath = path.join(tmpDir, "clipcanvas.db");
+    storageDir = path.join(tmpDir, "storage");
+    db = new ClipDatabase(dbPath, storageDir);
+    const seeded = seedDatabase(db, storageDir, { nativeImage });
+    console.log(`[verify] synthetic database: ${seeded.clips} clips, ${seeded.images} of them images`);
+  } else {
+    dbPath = copyDb();
+    storageDir = LIVE_STORE;
+    console.log("[verify] copied database ->", path.basename(dbPath));
+    db = new ClipDatabase(dbPath, storageDir);
   }
-
-  const dbPath = copyDb();
-  console.log("[verify] copied database ->", path.basename(dbPath));
-  const db = new ClipDatabase(dbPath, LIVE_STORE);
-  handleAssetProtocol(protocol, LIVE_STORE);
+  handleAssetProtocol(protocol, storageDir);
 
   const all = db.listWorkspaces();
   const target = all.find((w) => w.clip_count > 0) || all[0];
   console.log(`[verify] workspace "${target.name}" with ${target.clip_count} clips\n`);
-  registerIpc(db, target.id);
+  registerIpc(db, target.id, storageDir);
 
   const win = new BrowserWindow({
     width: 1400, height: 860, show: KEEP_OPEN,
@@ -453,7 +461,7 @@ app.whenReady().then(async () => {
     // ── 2. The whole archive: a year of calendar, days loaded ─────────────
     const o = await run(OVERVIEW);
     console.log("\n-- overview: " + o.years.join(", ") + " --");
-    ok("clips counted from the real database", /\d+ clips/.test(o.status), o.status.trim());
+    ok("clips counted from the database", /\d+ clips/.test(o.status), o.status.trim());
     ok("empty state not shown", !o.emptyShown);
     ok("no loading errors", !o.error, o.error || "");
     ok("canvas painted", o.tainted || o.painted > 0.2,
@@ -626,8 +634,14 @@ app.whenReady().then(async () => {
   ok("no console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
 
   db.close();
-  try { fs.unlinkSync(dbPath); } catch (_) {}
+  try {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+    else for (const s of ["", "-wal", "-shm"]) fs.rmSync(dbPath + s, { force: true });
+  } catch (_) {}
 
   console.log(failures ? `\n${failures} FAILURE(S)\n` : "\nAPP VERIFIED END TO END\n");
-  if (!KEEP_OPEN) app.exit(failures ? 1 : 0);
+  if (!KEEP_OPEN) {
+    app.once("quit", () => { try { fs.rmSync(PROFILE, { recursive: true, force: true }); } catch (_) {} });
+    app.exit(failures ? 1 : 0);
+  }
 });
