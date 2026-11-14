@@ -315,8 +315,6 @@ function resumeHotkey() {
 
 /** Everything the Settings window shows. */
 function settingsState() {
-  const stats = db.getStorageStats({});
-  const images = stats.byType.find((t) => t.type === "image");
   return {
     hotkey: hotkeyActive,                       // null: none could be registered
     hotkeySaved: settings.get("hotkey") || null, // null: using the defaults
@@ -327,12 +325,7 @@ function settingsState() {
     capture: captureState(),
     storageDir,
     logFile: log.file,
-    stats: {
-      clips: stats.totals.count,
-      dbBytes: stats.dbBytes,
-      imageBytes: images ? images.bytes : 0,
-      images: images ? images.count : 0,
-    },
+    stats: db.getStorageStats(), // { clips, images, imageBytes, dbBytes }
     version: app.getVersion(),
     versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
     homepage: pkg.homepage || null,

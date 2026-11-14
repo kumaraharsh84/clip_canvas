@@ -1,6 +1,7 @@
 // ─── test/verify-db.js ────────────────────────────────────────────────────
-// Checks for src/main/db.js: the v6 migration, and the queries the Time Canvas
-// loads through.
+// Checks for src/main/db.js: the v6 and v7 migrations, the queries the Time
+// Canvas loads through, and that the ones which run on every copy are answered
+// from an index rather than by reading every clip.
 //
 // better-sqlite3 is built for Electron's Node, so this runs under Electron:
 //   npm run test:db                         (electron test/verify-db.js)
@@ -111,7 +112,10 @@ function run() {
         VALUES (new.id, new.title, CASE WHEN new.type = 'image' THEN '' ELSE new.content END, new.tags, new.source);
       END;
       UPDATE clips SET category = NULL, category_v = 0;
-      DELETE FROM schema_version WHERE version = 6;
+      DROP INDEX idx_clips_day_counts;
+      CREATE INDEX idx_clips_day_category
+        ON clips(workspace_id, deleted_at, is_archived, year, month, day, category);
+      DELETE FROM schema_version WHERE version >= 6;
     `);
     db.close();
 
@@ -120,7 +124,10 @@ function run() {
     ok("update trigger now fires only on indexed columns", /AFTER\s+UPDATE\s+OF/i.test(trig));
     const missing = db2.db.prepare("SELECT COUNT(*) n FROM clips WHERE category IS NULL OR category_v <> ?").get(CLASSIFIER_VERSION).n;
     ok("every clip got a category", missing === 0, `${missing} missing`);
-    ok("schema version 6 recorded", !!db2.db.prepare("SELECT 1 FROM schema_version WHERE version = 6").get());
+    ok("schema versions 6 and 7 recorded",
+       db2.db.prepare("SELECT COUNT(*) n FROM schema_version WHERE version IN (6, 7)").get().n === 2);
+    const idx = db2.db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_clips_day_%'").all().map((r) => r.name);
+    ok("the day-count index replaced the older one", idx.join() === "idx_clips_day_counts", idx.join(", "));
 
     // Search still follows edits after the trigger change -- and a star does
     // not duplicate the clip in the index.
@@ -162,10 +169,50 @@ function run() {
     ok("trashing a clip changes its day's count", after === 2);
     ok("trash filter sees it", db.getDayCounts({ workspaceId: ws, filter: "trash" }).some((r) => r.day === 3));
     void before;
+
+    // Both run constantly: the counts after every copy, a day's clips for
+    // every day that scrolls into view.
+    const counts = plansOf(db, () => db.getDayCounts({ workspaceId: ws }));
+    ok("day counts are answered from an index alone",
+       counts.length === 1 && /COVERING INDEX idx_clips_day_counts/.test(counts[0]), counts.join(" || "));
+    const dayPlans = plansOf(db, () => db.getClipsForDays({ workspaceId: ws, days: [{ year: 2026, month: 6, day: 3 }] }));
+    ok("a day's clips are found by their day, not by scanning time",
+       dayPlans.length === 2 && dayPlans.every((p) => /day=\?/.test(p)), dayPlans.join(" || "));
     db.close();
   }
 
-  // ── 5. Optional: a copy of the real database ──────────────────────────────
+  // ── 5. Storage figures and the duplicate check ────────────────────────────
+  console.log("\n-- storage figures and the duplicate check --");
+  {
+    const db = fresh("stats");
+    const ws = db.listWorkspaces()[0].id;
+    const note = db.addClip({ type: "text", content: "first note", workspace_id: ws });
+    db.addClip({ type: "image", content: null, workspace_id: ws, file_size_bytes: 1000 });
+    db.addClip({ type: "image", content: null, workspace_id: ws, file_size_bytes: 500 });
+    const gone = db.addClip({ type: "image", content: null, workspace_id: ws, file_size_bytes: 9999 });
+    db.deleteClips([gone.id]);
+
+    const s = db.getStorageStats();
+    ok("storage figures count clips and images, and leave out Trash",
+       s.clips === 3 && s.images === 2 && s.imageBytes === 1500 && s.dbBytes > 0, JSON.stringify(s));
+    const statPlans = plansOf(db, () => db.getStorageStats());
+    ok("storage figures are answered from an index alone",
+       statPlans.length === 1 && /COVERING INDEX/.test(statPlans[0]), statPlans.join(" || "));
+
+    ok("the same text copied again at once is a duplicate", !!db.findRecentDuplicate(ws, "text", "first note"));
+    ok("different text is not", !db.findRecentDuplicate(ws, "text", "second note"));
+    ok("nor the same text in another workspace", !db.findRecentDuplicate(ws + 1000, "text", "first note"));
+    for (let i = 0; i < 40; i++) db.addClip({ type: "text", content: "filler " + i, workspace_id: ws });
+    ok("nor the same text once many copies have followed it", !db.findRecentDuplicate(ws, "text", "first note"));
+    const again = db.addClip({ type: "text", content: "first note", workspace_id: ws });
+    ok("a fresh copy of it is a duplicate again", !!db.findRecentDuplicate(ws, "text", "first note"));
+    at(db, again.id, new Date(Date.now() - 60000));
+    ok("but not a minute later", !db.findRecentDuplicate(ws, "text", "first note"));
+    void note;
+    db.close();
+  }
+
+  // ── 6. Optional: a copy of the real database ──────────────────────────────
   if (process.argv.includes("--live")) {
     console.log("\n-- a copy of your database --");
     const appData = process.env.APPDATA || path.join(os.homedir(), ".config");
