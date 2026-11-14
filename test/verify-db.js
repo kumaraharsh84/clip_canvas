@@ -38,24 +38,24 @@ function at(db, id, date) {
     .run(s, date.getFullYear(), date.getMonth() + 1, date.getDate(), date.getHours(), id);
 }
 
-function run() {
-  // ── 1. The cap keeps the newest clips ─────────────────────────────────────
-  console.log("\n-- getClips over its cap --");
-  {
-    const db = fresh("cap");
-    const ws = db.listWorkspaces()[0].id;
-    for (let i = 1; i <= 25; i++) {
-      const c = db.addClip({ type: "text", content: "clip " + i, workspace_id: ws });
-      at(db, c.id, new Date(2026, 0, 1, 9, i));
-    }
-    const got = db.getClips({ workspaceId: ws, max: 20 }).map((c) => Number(c.content.slice(5)));
-    ok("the newest clip is included", got.includes(25), `got #${got[0]}..#${got[got.length - 1]}`);
-    ok("the oldest are the ones dropped", !got.includes(5) && got.includes(6));
-    ok("still returned oldest first", got.every((v, i) => i === 0 || v > got[i - 1]));
-    db.close();
-  }
+/**
+ * The query plan of every statement `fn` makes `db` prepare -- the app's own
+ * SQL, not a copy of it that could drift.
+ */
+function plansOf(db, fn) {
+  const raw = db.db;
+  const prepare = raw.prepare.bind(raw);
+  const seen = [];
+  raw.prepare = (sql) => { seen.push(sql); return prepare(sql); };
+  try { fn(); } finally { delete raw.prepare; }
+  return seen.map((sql) => {
+    const args = new Array((sql.match(/\?/g) || []).length).fill(null);
+    return prepare("EXPLAIN QUERY PLAN " + sql).all(...args).map((r) => r.detail).join(" | ");
+  });
+}
 
-  // ── 1b. Exactly one default workspace ─────────────────────────────────────
+function run() {
+  // ── 1. Exactly one default workspace ─────────────────────────────────────
   console.log("\n-- default workspace --");
   {
     const p = path.join(TMP, "defaults.db");

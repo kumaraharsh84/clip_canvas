@@ -356,42 +356,6 @@ class ClipDatabase {
     return { sql: where.length ? "WHERE " + where.join(" AND ") : "", params };
   }
 
-  /** Newest-first page. `limit`/`offset`, or `beforeId` for keyset paging. */
-  getClipPage(opts = {}) {
-    const limit = Math.min(Math.max(Number(opts.limit) || 200, 1), 5000);
-    const offset = Math.max(Number(opts.offset) || 0, 0);
-    const { sql, params } = this.clipWhere(opts);
-
-    const rows = this.db.prepare(`
-      SELECT c.* FROM clips c ${sql}
-      ORDER BY c.is_pinned DESC, c.created_at DESC, c.id DESC
-      LIMIT ? OFFSET ?
-    `).all(...params, limit, offset);
-
-    const total = this.db
-      .prepare(`SELECT COUNT(*) n FROM clips c ${sql}`)
-      .get(...params).n;
-
-    return { clips: rows.map(hydrate), total, limit, offset,
-             hasMore: offset + rows.length < total };
-  }
-
-  /**
-   * Matching clips, oldest first. Bounded by `max` so a runaway call cannot
-   * OOM -- and when it is hit, it is the NEWEST `max` that come back: this used
-   * to sort ascending before the LIMIT, so past the cap every new copy was the
-   * one left out.
-   */
-  getClips(opts = {}) {
-    const max = Math.min(Number(opts.max) || 20000, 100000);
-    const { sql, params } = this.clipWhere(opts);
-    return this.db.prepare(`
-      SELECT c.* FROM clips c ${sql}
-      ORDER BY c.created_at DESC, c.id DESC
-      LIMIT ?
-    `).all(...params, max).reverse().map(hydrate);
-  }
-
   /**
    * Clip counts per calendar day and category -- all the Time Canvas needs to
    * draw the whole calendar without loading a single clip. `t0`/`t1` are the
@@ -446,39 +410,9 @@ class ClipDatabase {
     return out;
   }
 
-  /**
-   * Metadata only -- no `content`. This is what the Time Canvas loads: it needs
-   * every clip's timestamp and size to lay the canvas out, but the body text is
-   * only needed for clips you actually zoom into, and pulling 5 MB of bodies
-   * through IPC to render a treemap is most of what made the old load take 59s.
-   */
-  getClipSummaries(opts = {}) {
-    const max = Math.min(Number(opts.max) || 50000, 200000);
-    const { sql, params } = this.clipWhere(opts);
-    return this.db.prepare(`
-      SELECT c.id, c.type, c.title, c.source, c.tags, c.workspace_id, c.board_id,
-             c.is_starred, c.is_archived, c.is_pinned, c.deleted_at,
-             c.created_at, c.updated_at, c.file_size_bytes,
-             c.storage_mode, c.asset_path, c.thumbnail_path, c.mime_type,
-             c.year, c.month, c.day, c.hour,
-             LENGTH(c.content) AS content_length,
-             CASE WHEN c.type = 'image' THEN NULL
-                  ELSE substr(c.content, 1, 4000) END AS content
-        FROM clips c ${sql}
-       ORDER BY c.created_at ASC, c.id ASC
-       LIMIT ?
-    `).all(...params, max).map(hydrate);
-  }
-
   getClipById(id) {
     const row = this.db.prepare("SELECT * FROM clips WHERE id = ?").get(id);
     return row ? hydrate(row) : null;
-  }
-
-  /** Full body for one clip -- used when a card is zoomed into or opened. */
-  getClipContent(id) {
-    const row = this.db.prepare("SELECT id, type, content FROM clips WHERE id = ?").get(id);
-    return row || null;
   }
 
   // ── Search ─────────────────────────────────────────────────────────────────
@@ -523,76 +457,7 @@ class ClipDatabase {
     }
   }
 
-  // ── Time hierarchy (Time Canvas) ───────────────────────────────────────────
-  timeBase(workspaceId) {
-    return {
-      sql: "WHERE deleted_at IS NULL AND is_archived = 0" +
-           (workspaceId ? " AND workspace_id = ?" : ""),
-      params: workspaceId ? [workspaceId] : [],
-    };
-  }
-
-  getYears(workspaceId) {
-    const b = this.timeBase(workspaceId);
-    return this.db.prepare(
-      `SELECT year, COUNT(*) AS count FROM clips ${b.sql} AND year IS NOT NULL
-       GROUP BY year ORDER BY year ASC`
-    ).all(...b.params);
-  }
-
-  getMonths(year, workspaceId) {
-    const b = this.timeBase(workspaceId);
-    return this.db.prepare(
-      `SELECT month, COUNT(*) AS count FROM clips ${b.sql} AND year = ?
-       GROUP BY month ORDER BY month ASC`
-    ).all(...b.params, year);
-  }
-
-  getDays(year, month, workspaceId) {
-    const b = this.timeBase(workspaceId);
-    return this.db.prepare(
-      `SELECT day, COUNT(*) AS count FROM clips ${b.sql} AND year = ? AND month = ?
-       GROUP BY day ORDER BY day ASC`
-    ).all(...b.params, year, month);
-  }
-
-  getHours(year, month, day, workspaceId) {
-    const b = this.timeBase(workspaceId);
-    return this.db.prepare(
-      `SELECT hour, COUNT(*) AS count FROM clips ${b.sql}
-         AND year = ? AND month = ? AND day = ?
-       GROUP BY hour ORDER BY hour ASC`
-    ).all(...b.params, year, month, day);
-  }
-
-  /** `startTimestamp`/`endTimestamp` are Unix SECONDS, matching created_at. */
-  getClipsInTimeRange(startTimestamp, endTimestamp, workspaceId) {
-    const b = this.timeBase(workspaceId);
-    return this.db.prepare(
-      `SELECT * FROM clips ${b.sql} AND created_at >= ? AND created_at < ?
-       ORDER BY created_at ASC, id ASC`
-    ).all(...b.params, toSeconds(startTimestamp), toSeconds(endTimestamp)).map(hydrate);
-  }
-
-  /** Split a range into working sessions separated by a gap of idle minutes. */
-  getSessions(startTimestamp, endTimestamp, workspaceId, gapMinutes = 30) {
-    const clips = this.getClipsInTimeRange(startTimestamp, endTimestamp, workspaceId);
-    const gap = Math.max(1, Number(gapMinutes) || 30) * 60;
-    const sessions = [];
-    let cur = null;
-
-    for (const c of clips) {
-      if (!cur || c.created_at - cur.end > gap) {
-        cur = { start: c.created_at, end: c.created_at, count: 0, clips: [] };
-        sessions.push(cur);
-      }
-      cur.end = c.created_at;
-      cur.count++;
-      cur.clips.push(c.id);
-    }
-    return sessions;
-  }
-
+  // ── Time columns ───────────────────────────────────────────────────────────
   /**
    * Fill year/month/day/weekday/hour for rows where they are NULL.
    * SQLite's strftime is used rather than JS so the whole thing is one
@@ -683,16 +548,6 @@ class ClipDatabase {
     sets.push("updated_at = strftime('%s','now')");
     this.db.prepare(`UPDATE clips SET ${sets.join(", ")} WHERE id = ?`).run(...params, id);
     return this.getClipById(id);
-  }
-
-  /** Archive never touches a starred clip -- stated behaviour in the README. */
-  archiveClips(ids) {
-    const stmt = this.db.prepare(
-      "UPDATE clips SET is_archived = 1, updated_at = strftime('%s','now') WHERE id = ? AND is_starred = 0"
-    );
-    let n = 0;
-    this.db.transaction(() => { for (const id of ids) n += stmt.run(id).changes; })();
-    return { archived: n };
   }
 
   /** Soft delete -> Trash. */
@@ -818,13 +673,8 @@ function autoTags(clip) {
   return tags;
 }
 
-function toSeconds(v) {
-  const n = Number(v) || 0;
-  return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
-}
-
 function safeSize(p) {
   try { return fs.statSync(p).size; } catch (_) { return 0; }
 }
 
-module.exports = { ClipDatabase, SCHEMA_VERSION, ftsQuery, toSeconds };
+module.exports = { ClipDatabase, SCHEMA_VERSION, ftsQuery };

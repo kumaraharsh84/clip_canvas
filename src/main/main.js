@@ -496,27 +496,19 @@ function registerIpc() {
   handle("workspaces:create", (name) => db.createWorkspace(name));
   handle("workspaces:setActive", (id) => {
     activeWorkspaceId = id;
-    broadcast("workspace:changed", id);
     return { ok: true, activeWorkspaceId };
   });
 
   handle("boards:list", (wid) => db.listBoards(wid || activeWorkspaceId));
-  handle("boards:setActive", () => ({ ok: true }));
   handle("boards:create", ({ workspaceId, name }) =>
     db.createBoard(workspaceId || activeWorkspaceId, name));
   handle("boards:rename", ({ id, name }) => db.renameBoard(id, name));
   handle("boards:delete", (id) => db.deleteBoard(id));
 
-  handle("clips:getPage", (opts = {}) => db.getClipPage(withWorkspace(opts)));
-  handle("clips:getAll", (opts = {}) => db.getClips(withWorkspace(opts)));
-  handle("clips:getSummaries", (opts = {}) => db.getClipSummaries(withWorkspace(opts)));
-  handle("clips:getById", (id) => db.getClipById(id));
-  handle("clips:getContent", (id) => db.getClipContent(id));
   handle("clips:search", (opts = {}) => db.searchClips(withWorkspace(opts)));
   handle("clips:update", ({ id, patch }) => db.updateClip(id, patch));
   handle("clips:delete", (ids) => db.deleteClips(toArray(ids)));
   handle("clips:restore", (ids) => db.restoreClips(toArray(ids)));
-  handle("clips:archive", (ids) => db.archiveClips(toArray(ids)));
   handle("clips:trashSummary", (opts = {}) => db.getTrashSummary(withWorkspace(opts)));
   handle("clips:emptyTrash", (opts = {}) => db.emptyTrash(withWorkspace(opts)));
 
@@ -572,25 +564,9 @@ function registerIpc() {
   handle("capture:getState", () => captureState());
   handle("capture:setPaused", (paused) => { setPaused(paused); return captureState(); });
 
-  handle("time:getYears", (wid) => db.getYears(wid || activeWorkspaceId));
-  handle("time:getMonths", ({ year, workspaceId } = {}) =>
-    db.getMonths(year, workspaceId || activeWorkspaceId));
-  handle("time:getDays", ({ year, month, workspaceId } = {}) =>
-    db.getDays(year, month, workspaceId || activeWorkspaceId));
-  handle("time:getHours", ({ year, month, day, workspaceId } = {}) =>
-    db.getHours(year, month, day, workspaceId || activeWorkspaceId));
-  handle("time:getClipsInTimeRange", ({ startTimestamp, endTimestamp, workspaceId } = {}) =>
-    db.getClipsInTimeRange(startTimestamp, endTimestamp, workspaceId || activeWorkspaceId));
-  handle("time:getSessions", ({ startTimestamp, endTimestamp, workspaceId, gapMinutes } = {}) =>
-    db.getSessions(startTimestamp, endTimestamp, workspaceId || activeWorkspaceId, gapMinutes));
-  handle("time:backfill", () => db.backfillTimeColumns());
-
-  handle("storage:getStats", (opts = {}) => db.getStorageStats(withWorkspace(opts)));
   handle("storage:openFolder", () => { shell.openPath(storageDir); return { ok: true }; });
-  handle("settings:getMaxFileSize", () => 0);
 
   handle("window:hide", () => { if (win) win.hide(); return null; });
-  handle("window:minimize", () => { if (win) win.minimize(); return null; });
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -598,5 +574,3 @@ function withWorkspace(opts) {
   return { ...opts, workspaceId: opts.workspaceId || activeWorkspaceId };
 }
 function toArray(v) { return Array.isArray(v) ? v : [v]; }
-
-module.exports = { classify };

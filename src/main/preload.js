@@ -21,28 +21,23 @@ const { contextBridge, ipcRenderer } = require("electron");
 const CHANNELS = [
   // workspaces / boards
   "workspaces:list", "workspaces:setActive", "workspaces:create",
-  "boards:list", "boards:setActive", "boards:create", "boards:rename", "boards:delete",
+  "boards:list", "boards:create", "boards:rename", "boards:delete",
 
   // clips
-  "clips:getPage", "clips:getAll", "clips:getSummaries", "clips:getById",
-  "clips:getContent", "clips:search", "clips:update", "clips:delete",
-  "clips:restore", "clips:archive", "clips:copyBack", "clips:trashSummary",
+  "clips:search", "clips:update", "clips:delete", "clips:restore",
+  "clips:copyBack", "clips:trashSummary",
   "clips:emptyTrash", "clips:dayCounts", "clips:forDays",
 
-  // time canvas
-  "time:getYears", "time:getMonths", "time:getDays", "time:getHours",
-  "time:getClipsInTimeRange", "time:getSessions", "time:backfill",
-
   // app
-  "storage:getStats", "storage:openFolder", "settings:getMaxFileSize",
-  "window:hide", "window:minimize",
+  "storage:openFolder",
+  "window:hide",
   "capture:getState", "capture:setPaused",
   "settings:get", "settings:setHotkey", "settings:resetHotkey", "settings:suspendHotkey",
   "settings:setAutoStart",
   "app:openLog", "app:openHomepage", "window:openSettings",
 ];
 
-const EVENTS = ["clip:added", "clips:changed", "workspace:changed", "capture:changed", "settings:changed"];
+const EVENTS = ["clip:added", "capture:changed", "settings:changed"];
 
 async function safeInvoke(channel, ...args) {
   if (!CHANNELS.includes(channel)) {
@@ -84,15 +79,10 @@ const api = {
     remove: (id) => safeInvoke("boards:delete", id),
   },
   clips: {
-    page: (opts) => safeInvoke("clips:getPage", opts),
-    summaries: (opts) => safeInvoke("clips:getSummaries", opts),
-    byId: (id) => safeInvoke("clips:getById", id),
-    content: (id) => safeInvoke("clips:getContent", id),
     search: (opts) => safeInvoke("clips:search", opts),
     update: (id, patch) => safeInvoke("clips:update", { id, patch }),
     remove: (ids) => safeInvoke("clips:delete", ids),
     restore: (ids) => safeInvoke("clips:restore", ids),
-    archive: (ids) => safeInvoke("clips:archive", ids),
     copyBack: (id) => safeInvoke("clips:copyBack", id),
     trashSummary: (opts) => safeInvoke("clips:trashSummary", opts),
     emptyTrash: (opts) => safeInvoke("clips:emptyTrash", opts),
@@ -100,7 +90,6 @@ const api = {
     forDays: (opts) => safeInvoke("clips:forDays", opts),
   },
   storage: {
-    stats: (opts) => safeInvoke("storage:getStats", opts),
     openFolder: () => safeInvoke("storage:openFolder"),
   },
   capture: {
@@ -121,9 +110,7 @@ const api = {
   window: {
     openSettings: () => safeInvoke("window:openSettings"),
     hide: () => safeInvoke("window:hide"),
-    minimize: () => safeInvoke("window:minimize"),
   },
 };
 
 contextBridge.exposeInMainWorld("api", api);
-contextBridge.exposeInMainWorld("clipcanvas", api); // alias

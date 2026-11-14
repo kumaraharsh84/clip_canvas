@@ -4,7 +4,7 @@
 // whole year loads its days, a new copy moves nothing outside today, search
 // reveals a clip in a day that was not loaded, and hours and clips render.
 //
-// Same pattern as v1's test/archive/v1/benchmark-renderer.js: a thin IPC layer stands in for
+// A thin IPC layer stands in for
 // main.js so the tray, hotkey and clipboard watcher never start, and the REAL
 // renderer is loaded and inspected. The clip-asset:// handler is the app's own
 // (src/main/assetProtocol.js), not a copy, so image loading is really tested.
@@ -90,18 +90,11 @@ function registerIpc(db, workspaceId) {
   handle("workspaces:setActive", () => ({ ok: true, activeWorkspaceId: workspaceId }));
   handle("workspaces:create", (name) => db.createWorkspace(name));
   handle("boards:list", (id) => db.listBoards(id || workspaceId));
-  handle("boards:setActive", () => ({ ok: true }));
 
-  handle("clips:getAll", (o = {}) => db.getClips(ws(o)));
-  handle("clips:getPage", (o = {}) => db.getClipPage(ws(o)));
-  handle("clips:getSummaries", (o = {}) => db.getClipSummaries(ws(o)));
-  handle("clips:getById", (id) => db.getClipById(id));
-  handle("clips:getContent", (id) => db.getClipContent(id));
   handle("clips:search", (o = {}) => db.searchClips(ws(o)));
   handle("clips:update", ({ id, patch }) => db.updateClip(id, patch));
   handle("clips:delete", (ids) => db.deleteClips([].concat(ids)));
   handle("clips:restore", (ids) => db.restoreClips([].concat(ids)));
-  handle("clips:archive", (ids) => db.archiveClips([].concat(ids)));
   handle("clips:copyBack", (id) => ({ ok: true, id }));
   handle("clips:trashSummary", (o = {}) => db.getTrashSummary(ws(o)));
   handle("clips:emptyTrash", (o = {}) => db.getTrashSummary(ws(o))); // read-only here
@@ -140,21 +133,8 @@ function registerIpc(db, workspaceId) {
   handle("app:openLog", () => ({ ok: true }));
   handle("app:openHomepage", () => ({ ok: true }));
   handle("window:openSettings", () => null);
-  handle("storage:getStats", (o = {}) => db.getStorageStats(ws(o)));
   handle("storage:openFolder", () => ({ ok: true }));
-  handle("settings:getMaxFileSize", () => 0);
   handle("window:hide", () => null);
-  handle("window:minimize", () => null);
-
-  handle("time:getYears", (id) => db.getYears(id || workspaceId));
-  handle("time:getMonths", ({ year } = {}) => db.getMonths(year, workspaceId));
-  handle("time:getDays", ({ year, month } = {}) => db.getDays(year, month, workspaceId));
-  handle("time:getHours", ({ year, month, day } = {}) => db.getHours(year, month, day, workspaceId));
-  handle("time:getClipsInTimeRange", ({ startTimestamp, endTimestamp } = {}) =>
-    db.getClipsInTimeRange(startTimestamp, endTimestamp, workspaceId));
-  handle("time:getSessions", ({ startTimestamp, endTimestamp, gapMinutes } = {}) =>
-    db.getSessions(startTimestamp, endTimestamp, workspaceId, gapMinutes));
-  handle("time:backfill", () => ({ updated: 0 }));
 }
 
 // ── Probes (run inside the real renderer) ────────────────────────────────────

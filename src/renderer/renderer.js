@@ -233,7 +233,7 @@
   }
 
   // ── Selection / details ────────────────────────────────────────────────────
-  async function onSelect(clip, node) {
+  function onSelect(clip, node) {
     selected = clip;
     selectedNode = node || null;
     scheduleInfo();
@@ -266,13 +266,8 @@
       img.src = "clip-asset://" + String(clip.asset_path).replace(/\\/g, "/");
       el.dBody.replaceChildren(img);
     } else {
-      let text = clip.content || "";
-      if (clip.content_length && text.length < clip.content_length) {
-        const full = await api.clips.content(clip.id);
-        text = (full && full.content) || text;
-      }
       const pre = document.createElement("pre");
-      pre.textContent = text;
+      pre.textContent = clip.content || "";
       el.dBody.replaceChildren(pre);
     }
   }
