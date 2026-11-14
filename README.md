@@ -206,6 +206,24 @@ The tray menu opens the storage folder and the log.
 - Migrations are additive — `CREATE TABLE IF NOT EXISTS` and guarded
   `ALTER TABLE … ADD COLUMN` — so an existing install upgrades in place.
 
+## Privacy
+
+- **Nothing leaves this computer.** The history is the database and the image
+  folders listed above. ClipCanvas has no account, no sync, no telemetry and
+  no update check, and its windows are not allowed to load anything from the
+  network.
+- **Everything you copy is kept until you delete it**: text, links and images.
+  Delete moves a clip to Trash, and *Empty trash* removes it and its files for
+  good.
+- **Nothing is encrypted.** Whoever can read your Windows user folder can read
+  your history.
+- **Never captured:** a copy that an app marks as private, which is what
+  password managers do; whatever was on the clipboard when ClipCanvas started;
+  anything copied while capture is paused; files copied in Explorer.
+- **A password copied from an app that does not mark it** is stored like any
+  other text. Pause capture first, from the tray or the pill in the top bar,
+  or delete the clip afterwards and empty Trash.
+
 ## Troubleshooting
 
 ### `better_sqlite3.node` was compiled against a different Node.js version
