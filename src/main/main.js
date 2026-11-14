@@ -429,9 +429,10 @@ function createWatcher() {
 }
 
 function captureText(text) {
-  if (db.findRecentDuplicate(activeWorkspaceId, classify(text), text)) return;
+  const type = classify(text);
+  if (db.findRecentDuplicate(activeWorkspaceId, type, text)) return;
   const clip = db.addClip({
-    type: classify(text),
+    type,
     content: text,
     workspace_id: activeWorkspaceId,
     source: "clipboard",
