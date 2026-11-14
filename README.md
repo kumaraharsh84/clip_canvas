@@ -52,8 +52,9 @@ npm start
 ```
 
 Or install it like any Windows app: `npm run build` writes
-`dist/ClipCanvas Setup <version>.exe`. What changed in each version is in
-[CHANGELOG.md](CHANGELOG.md).
+`dist/ClipCanvas Setup <version>.exe`. The installer is not code-signed, so
+Windows SmartScreen warns the first time it runs: choose *More info*, then
+*Run anyway*. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 ClipCanvas starts in the system tray. Press `Win+Alt+V`, or click the tray
 icon, to open or hide the window. Closing the window hides it; quit from the
@@ -90,8 +91,8 @@ npm run build   # dist/ClipCanvas Setup <version>.exe
 - **Top bar** — choose the workspace and board, and show Active, Starred,
   Pinned, Archived, Trash or All clips. *Capturing* shows whether copies are
   being saved; click it to pause. *Today* and *Fit* move the camera. New clips
-  are saved to the active workspace; Personal, Research and College are
-  created on first run.
+  are saved to the active workspace; one named Personal is created on first
+  run.
 - **Details** — the full text or image, an editable title, and Copy back,
   Star, Pin, Archive and Delete. Delete moves a clip to Trash; in Trash,
   Restore brings it back and *Empty trash* deletes everything there for good,
@@ -141,19 +142,20 @@ source tree, where every file is a box and every box is readable up close.
 | `npm start` | run the app |
 | `npm run dev` | run it with DevTools, and show the window at launch |
 | `npm run build` | build the Windows installer into `dist/` |
-| `npm test` | classification, calendar, layout, clipboard watcher and image-protocol checks, on plain Node |
+| `npm test` | classification, calendar, layout, clipboard watcher, image-protocol and shortcut checks, on plain Node |
 | `npm run lint` | ESLint (correctness rules only) |
 | `npm run test:db` | database migration and per-day queries (under Electron) |
 | `npm run verify:app` | check the real app end to end, against a copy of your database |
-| `npm run bundle` | rebuild the canvas bundles after editing `src/renderer/canvas/` |
+| `npm run bundle` | rebuild the canvas bundle after editing `src/renderer/canvas/` |
 | `npm run demo` | serve the demo at <http://localhost:8790> |
 | `npm run screenshots` | retake the screenshots in `docs/` from the demo |
 | `npm run icons` | rebuild `src/assets/icon.ico` and `icon.png` from `logo.svg` |
 | `npm run gif` | re-record `docs/zoom.gif` from the demo |
 
 The renderer runs under context isolation, so it loads one prebuilt bundle
-instead of modules. GitHub Actions runs both checks on every push and fails if a
-committed bundle does not match its sources.
+instead of modules; the demo page loads the same file. GitHub Actions runs the
+lint and the plain-Node checks on every push to `main` and every pull request,
+and fails if the committed bundle does not match its sources.
 
 ## Project structure
 
@@ -178,16 +180,12 @@ src/
     canvas/            the Time Canvas engine -- see its README
     timecanvas.bundle.js   built from canvas/
   assets/              logo.svg (+ logo-small.svg for 16-32 px) and the icons built from them
-demo/                  the canvas on its own, with synthetic clips
+demo/                  the canvas on its own, with synthetic clips (loads the app's bundle)
 tools/                 build-icons.js (`npm run icons`), record-gif.js (`npm run gif`)
-test/                  checks, benchmarks and diagnostics -- see its README
-planning/              product decisions, roadmap and audits
+test/                  checks and diagnostics -- see its README
+planning/              product decisions, roadmap and feature status
 docs/                  screenshots
 ```
-
-`SESSION-NOTES.md` is the working summary of the project — its aim, how it is
-built, where it stands and what comes next. The planning record of v1, whose
-source was lost, is in `planning/archive/v1/`.
 
 ## Data
 
@@ -281,9 +279,7 @@ normal download path works.
 Check the pill in the top bar. *Capture paused*: click it to resume. *Capture
 error*: the clipboard cannot be read — tray menu → *Open log file* says why. If ClipCanvas was not running at all, it may not be
 registered to start with Windows: open it once with `npm start` and make sure
-*Start with Windows* is ticked in the tray menu. (An old
-`Start_ClipCanvas_Hidden.vbs` in the Windows Startup folder that points at a
-folder that has since moved does nothing and can be deleted.)
+*Start with Windows* is ticked in the tray menu.
 
 ### The window does not appear
 

@@ -4,6 +4,51 @@ What changed in each version of ClipCanvas. Newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Housekeeping before the repository goes public. Nothing new in the app.
+
+### Fixed
+
+- **Four queries slowed down as the history grew**, each on the process that
+  also watches the clipboard. Measured on 30,000 clips (136 MB):
+
+  | Query | Runs | Before | After |
+  | --- | --- | --- | --- |
+  | Storage figures | Settings opens or changes | 1,700 ms | 5 ms |
+  | Day counts | every copy | 375 ms | 14 ms |
+  | One day's clips | each day that scrolls into view | 345 ms | 2 ms |
+  | Duplicate check | every text copy | 300 ms | 3 ms |
+
+  They read columns stored after a clip's text, so SQLite walked every
+  large clip. Now the counts and the storage figures are answered from an
+  index alone, a day's clips are found by their day, and the duplicate
+  check looks at the newest rows only. Database schema 7: one index
+  replaces another, on first launch.
+
+### Changed
+
+- A new installation starts with one workspace, Personal. The Research and
+  College workspaces and their boards were the author's own; existing
+  databases keep theirs.
+- The demo page loads the app's canvas bundle instead of a second committed
+  copy. `npm run bundle` writes one file, and `npm run bundle:check` is what
+  CI runs.
+- CI: checks run once per pull request instead of twice, with a read-only
+  token, a cached npm download, and superseded runs cancelled.
+- The workspace settings no longer format on save: the code is laid out by
+  hand (see `eslint.config.js`).
+
+### Removed
+
+- IPC channels and database methods that nothing in the app called: the
+  year / month / day / hour queries and page loaders of the first canvas,
+  sessions, bulk archive, single-clip reads, `storage:getStats`, two stubs,
+  and the `window.clipcanvas` alias of `window.api`.
+- Unused helpers in the canvas modules.
+- The v1 planning notes and v1 test harnesses, which described code that no
+  longer exists.
+
 ## [2.2.0] — 2026-09-26
 
 ### Added
@@ -99,6 +144,7 @@ A rewrite, after the v1 source was lost; the first version pushed to GitHub.
 - Classification of prose, terminal sessions and code by language.
 - A demo page with synthetic clips, and a Windows installer.
 
+[Unreleased]: https://github.com/kumaraharsh84/clip_canvas/compare/v2.2.0...HEAD
 [2.2.0]: https://github.com/kumaraharsh84/clip_canvas/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/kumaraharsh84/clip_canvas/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/kumaraharsh84/clip_canvas/releases/tag/v2.0.0
