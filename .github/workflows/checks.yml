@@ -1,17 +1,31 @@
 name: checks
 
+# Pushes to main, and every pull request. A branch with an open pull request
+# used to be checked twice, once for the push and once for the request.
 on:
   push:
+    branches: [main]
   pull_request:
+
+# The job only reads the repository.
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request replaces the run before it.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+          cache: npm
 
       # --ignore-scripts: no Electron download and no native rebuild. The
       # checks below load plain JS from src/; nothing here needs Electron.
@@ -21,23 +35,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Classification regression suite
-        run: node test/verify-classify.js
+      # Classification, layout, clipboard watcher, image protocol, shortcut
+      # rules: the same list `npm test` runs locally, kept in package.json.
+      - name: Checks on plain Node
+        run: npm test
 
-      - name: Clipboard watcher
-        run: node test/verify-clipwatch.js
-
-      - name: Image protocol stays inside storage
-        run: node test/verify-asset-protocol.js
-
-      - name: Shortcut rules
-        run: node test/verify-hotkey.js
-
-      - name: Time canvas layout invariants
+      - name: Time canvas layout invariants at 20,000 clips
         run: node test/verify-timecanvas-2d.js --clips=20000
 
-      - name: Committed bundles match their sources
-        run: |
-          node src/renderer/canvas/build.js src/renderer/timecanvas.bundle.js
-          node src/renderer/canvas/build.js demo/timecanvas.bundle.js
-          git diff --exit-code -- src/renderer/timecanvas.bundle.js demo/timecanvas.bundle.js
+      - name: Committed bundle matches its sources
+        run: npm run bundle:check
