@@ -42,6 +42,13 @@ Housekeeping before the repository goes public. Nothing new in the app.
 
 ### Changed
 
+- **Electron 43 → 45**, with the clipboard watcher and *Copy back* moved to
+  Electron's new asynchronous clipboard (43 leaves support in December).
+  Polls never overlap, a copy-back is still never captured, and private
+  copies are still skipped; if the clipboard cannot say whether a copy is
+  private, it is not read. A captured picture is stored as the PNG the
+  clipboard gives, without being encoded again. better-sqlite3 13.1,
+  koffi 3.3.8, electron-builder 26.18.
 - A new installation starts with one workspace, Personal. The Research and
   College workspaces and their boards were the author's own; existing
   databases keep theirs.

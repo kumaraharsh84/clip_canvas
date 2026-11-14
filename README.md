@@ -48,7 +48,7 @@ synthetic clips.</sub>
 
 ```bash
 npm install     # also rebuilds better-sqlite3 for Electron (postinstall)
-npm start
+npm start       # the first run downloads Electron itself, about 130 MB
 ```
 
 Or install it like any Windows app: `npm run build` writes
@@ -109,7 +109,8 @@ npm run build   # dist/ClipCanvas Setup <version>.exe
 - **Capture.** The main process asks Windows every 700 ms whether the
   clipboard has changed (`GetClipboardSequenceNumber`, through
   [koffi](https://koffi.dev)) — about a microsecond — and reads the clipboard
-  only when it has. Images are checked first and saved as PNG under
+  only when it has. Reads are asynchronous (Electron 45), and run strictly
+  one after another, so a copy is never captured twice. Images are checked first and saved as PNG under
   `storage/images/YYYY/MM/`, with a 512 px thumbnail beside them for the
   zoomed-out canvas; the same picture copied twice is two clips and one
   file. Text is classified as a link, code or prose and stored in SQLite. Whatever is already on the clipboard when the app starts is

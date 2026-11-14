@@ -17,7 +17,7 @@ These run against the code in `src/` as it is now.
 | --- | --- | --- |
 | `verify-classify.js` | Node | Clip classification — prose, terminal sessions, code by language — and that the type stored at capture time agrees with what the canvas shows |
 | `verify-timecanvas-2d.js` | Node | Calendar and layout invariants on synthetic clips: every day in its weekday's column, wrapping is lossless, boxes never overlap, clips stay in copy order, every card's full text fits, and a new copy moves nothing outside its own day |
-| `verify-clipwatch.js` | Node | The clipboard watcher against a fake clipboard: captures once, skips launch contents, repeated images, private copies and copy-back, stays quiet while paused, retries a failed read, reports capture broken and recovered, and refuses a clipboard API it does not know |
+| `verify-clipwatch.js` | Node | The clipboard watcher against a fake clipboard: captures once, skips launch contents, repeated images, private copies and copy-back, stays quiet while paused, never lets two polls overlap, retries a failed read, reports capture broken and recovered, and refuses a clipboard API it does not know |
 | `verify-hotkey.js` | Node | The global shortcut: its defaults, which combinations may be chosen, the canonical form it is saved in, and which one is used when others are taken |
 | `verify-ipc.js` | Node | That the channels the main process answers, the preload's allow-list, and the events sent and listened for all agree |
 | `verify-asset-protocol.js` | Node | The `clip-asset://` handler: serves stored images with the headers the canvas needs, and nothing outside the storage folder, however the path is spelled |
@@ -43,7 +43,7 @@ Standalone: they do not load anything from `src/`.
 
 | Script | What it does |
 | --- | --- |
-| `check_clipboard.js`, `read_clipboard_formats.js` | Print the formats currently on the clipboard |
+| `read_clipboard_formats.js` | Prints every type currently on the clipboard and its size, never the content |
 | `test_clipboard_files.js` | Experiments in reading the paths of files copied in Explorer — the starting point for capturing copied files |
 | `benchmark-search.js` | Times `LIKE` against FTS5 search on a throwaway database |
 
