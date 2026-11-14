@@ -583,16 +583,36 @@ app.whenReady().then(async () => {
     ok("probe", false, err.message);
   }
 
-  // The watcher needs Electron's synchronous clipboard API, which Electron 44
-  // replaced. This is the check that fails if an upgrade takes it away.
+  // The watcher on this Electron's own clipboard. It only LOOKS: its first
+  // tick notes what is there and captures nothing, and nothing is written, so
+  // the clipboard of whoever runs this is left as it was. This is the check
+  // that fails if an Electron upgrade changes the clipboard API again.
   console.log("\n-- this Electron's clipboard --");
   {
     const { clipboard } = require("electron");
     const { ClipboardWatcher } = require("../src/main/clipwatch");
+    const seen = { captured: 0 };
     let err = null;
-    try { new ClipboardWatcher({ clipboard, onText() {}, onImage() {}, sequence: null }); } catch (e) { err = e; }
-    ok("the clipboard watcher can run on Electron " + process.versions.electron, !err, err ? err.message : "");
-    ok("readText answers synchronously", typeof clipboard.readText() === "string");
+    let w = null;
+    try {
+      w = new ClipboardWatcher({
+        clipboard,
+        decodeImage: (bytes) => nativeImage.createFromBuffer(bytes),
+        onText: () => seen.captured++,
+        onImage: () => seen.captured++,
+      });
+    } catch (e) { err = e; }
+    ok("the clipboard watcher accepts the clipboard of Electron " + process.versions.electron, !err, err ? err.message : "");
+    if (w) {
+      await w.tick();
+      if (!w.primed && process.env.CI) {
+        info("this runner has no clipboard that can be read; the first look was skipped");
+      } else {
+        ok("its first look at the real clipboard succeeds, and captures nothing",
+           w.primed && w.failures === 0 && seen.captured === 0, `${w.failures} failures, ${seen.captured} captured`);
+      }
+      if (process.platform === "win32") ok("it reads Windows' clipboard change counter", w.usesSequenceNumber);
+    }
   }
 
   // ── Storing images: the app's own code, on a folder of its own ─────────

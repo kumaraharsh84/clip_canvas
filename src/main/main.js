@@ -12,6 +12,7 @@
 // The clipboard watcher (clipwatch.js) polls Windows' clipboard sequence
 // number and reads the clipboard only when it changes, and skips copies that
 // password managers mark as private. Capture can be paused from the tray.
+// It needs the asynchronous clipboard of Electron 44 and later.
 //
 // Errors go to a log file (log.js) -- the app runs with no console -- which
 // the tray menu opens. The Settings window (renderer/settings.html) changes
@@ -19,7 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 const {
-  app, BrowserWindow, Tray, Menu, globalShortcut, clipboard, nativeImage,
+  app, BrowserWindow, Tray, Menu, globalShortcut, clipboard, ClipboardItem, nativeImage,
   ipcMain, shell, protocol, screen,
 } = require("electron");
 const path = require("path");
@@ -415,6 +416,7 @@ function startClipboardWatcher() {
 function createWatcher() {
   return new ClipboardWatcher({
     clipboard,
+    decodeImage: (bytes) => nativeImage.createFromBuffer(bytes),
     intervalMs: POLL_MS,
     onText: captureText,
     onImage: captureImage,
@@ -443,8 +445,8 @@ function captureText(text) {
 }
 
 /** The picture, its thumbnail and the clip row: images.js. */
-function captureImage(img, hash) {
-  const clip = storeImage({ db, storageDir, img, hash, workspaceId: activeWorkspaceId });
+function captureImage(img, hash, png) {
+  const clip = storeImage({ db, storageDir, img, hash, png, workspaceId: activeWorkspaceId });
   broadcast("clip:added", clip);
 }
 
@@ -499,19 +501,26 @@ function registerIpc() {
 }
 
 /**
- * Put a clip back on the clipboard, then tell the watcher, so it does not
- * re-capture what we just wrote and duplicate the clip on every copy-back.
+ * Put a clip back on the clipboard. The write goes through the watcher
+ * (ownWrite), so that it is not captured as a new clip -- copying back would
+ * otherwise duplicate the clip every time.
  */
-function copyBack(id) {
+async function copyBack(id) {
   const clip = db.getClipById(id);
   if (!clip) throw new Error("clip not found");
 
-  if (clip.type === "image" && clip.asset_path) {
-    const img = nativeImage.createFromPath(path.join(storageDir, clip.asset_path));
-    if (img.isEmpty()) throw new Error("image asset missing");
-    clipboard.writeImage(img);
-  } else {
-    clipboard.writeText(clip.content || "");
-  }
-  if (watcher) watcher.noteOwnWrite();
+  const write = async () => {
+    if (clip.type === "image" && clip.asset_path) {
+      let png;
+      try {
+        png = await fs.promises.readFile(path.join(storageDir, clip.asset_path));
+      } catch (err) {
+        throw new Error("image asset missing", { cause: err });
+      }
+      await clipboard.write([new ClipboardItem({ "image/png": new Blob([png], { type: "image/png" }) })]);
+    } else {
+      await clipboard.writeText(clip.content || "");
+    }
+  };
+  if (watcher) await watcher.ownWrite(write); else await write();
 }

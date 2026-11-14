@@ -54,10 +54,12 @@ function writeFile(storageDir, rel, bytes) {
  * @param {string} o.storageDir
  * @param {object} o.img         nativeImage, not empty
  * @param {string} o.hash        identity of its pixels (clipwatch.imageHash)
+ * @param {Buffer} [o.png]       its PNG bytes, when the clipboard already had
+ *                               them: saves encoding the picture again
  * @param {number} o.workspaceId
  * @returns {object} the new clip row
  */
-function storeImage({ db, storageDir, img, hash, workspaceId }) {
+function storeImage({ db, storageDir, img, hash, png = null, workspaceId }) {
   const { width, height } = img.getSize();
   const clip = {
     type: "image",
@@ -87,8 +89,8 @@ function storeImage({ db, storageDir, img, hash, workspaceId }) {
     "images", String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, "0"),
     `img-${crypto.randomUUID()}.png`,
   ].join("/");
-  const png = img.toPNG();
-  writeFile(storageDir, rel, png);
+  const bytes = png || img.toPNG();
+  writeFile(storageDir, rel, bytes);
 
   // A thumbnail that cannot be written must not cost the capture: NULL leaves
   // it to ThumbnailBackfill.
@@ -101,7 +103,7 @@ function storeImage({ db, storageDir, img, hash, workspaceId }) {
     thumbRel = null;
   }
 
-  return db.addClip({ ...clip, asset_path: rel, thumbnail_path: thumbRel, file_size_bytes: png.length });
+  return db.addClip({ ...clip, asset_path: rel, thumbnail_path: thumbRel, file_size_bytes: bytes.length });
 }
 
 /**
