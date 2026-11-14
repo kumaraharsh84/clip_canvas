@@ -1,12 +1,11 @@
 # test/
 
-Checks, benchmarks and diagnostics. Nothing here ships in the app.
+Checks and diagnostics. Nothing here ships in the app.
 
 ```text
 test/
   verify-*.js, capture-demo.js   the current checks (below)
   diagnostics/                   standalone clipboard and search experiments
-  archive/v1/                    v1 harnesses and benchmark results, for the record
 ```
 
 ## Current checks
@@ -56,33 +55,3 @@ Electron rather than plain Node:
 ```bash
 ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron test/diagnostics/benchmark-search.js
 ```
-
-## archive/v1/
-
-The v1 source was lost, and `src/` is a rewrite. These scripts were written
-against v1: they call its module API (`insertClip`, `trashClip`,
-`getDefaultWorkspaceId`, and `src/main/clipboard.js`, `settings.js` and
-`storage/storageService.js`, which no longer exist), and the renderer
-harnesses probe the DOM of the old renderer. They do not run against the
-current code; the usage lines inside them still give their old paths.
-
-| Script | What it did |
-| --- | --- |
-| `benchmark-renderer.js` | Load, render, scroll and search timings for the renderer; wrote the result files below |
-| `verify-time-canvas.js`, `verify-time-zoom.js` | Walked the DOM Time Canvas level by level, and its zoom ladder |
-| `verify_storage_v2.js`, `verify_file_support.js`, `verify_stability.js`, `verify_content_projection.js` | Storage v2, file capture, stability and content projection |
-| `v1_audit.js` | End-to-end audit of the V1 feature list |
-
-### results/
-
-| File | Run |
-| --- | --- |
-| `benchmark_results.june-baseline.json` | The June baseline, before FTS5 search and the 200-result cap |
-| `benchmark_results.json` | A 30 August run — the script's default output file |
-| `bench-smoketest.json`, `sweep-*.json` | 30 August: a smoke test, then a sweep from 250 to 2,000 clips |
-| `fixed-*.json`, `fixed2-*.json` | Later runs at the same sizes, as renderer fixes landed |
-| `ops-*.json`, `profile-1000.json`, `real-2000.json` | DOM operation counts and a per-function profile |
-| `post-timecanvas.json` | After the DOM Time Canvas landed |
-
-Each file's `_meta.comparability` says which numbers can be compared with the
-June baseline — search, for one, changed underneath it.

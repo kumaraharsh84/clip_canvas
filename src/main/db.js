@@ -2,12 +2,10 @@
 // SQLite data layer for ClipCanvas, on better-sqlite3 (synchronous by design --
 // every call here runs in the main process and finishes before it returns).
 //
-// RECONSTRUCTED against the live database at
-//   %APPDATA%/clipcanvas/clipcanvas.db
+// RECONSTRUCTED against a live database (%APPDATA%/clipcanvas/clipcanvas.db)
 // after the original source was lost. The schema below is not a guess: it was
-// read back out of that file, which already carries 5 applied migrations and
-// 649 live clips. The method names follow the v1 harnesses, kept in
-// test/archive/v1/; test/verify-db.js is what checks this class now.
+// read back out of that file, which already carried 5 applied migrations.
+// test/verify-db.js is what checks this class.
 //
 // TWO THINGS THAT BITE IF YOU FORGET THEM
 //
