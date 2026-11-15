@@ -1,17 +1,14 @@
 # test/
 
-Checks and diagnostics. Nothing here ships in the app.
+The checks. Nothing here ships in the app.
 
 ```text
 test/
-  verify-*.js, capture-demo.js   the current checks (below)
+  verify-*.js, capture-demo.js   the checks (below)
   seed-db.js                     builds the synthetic database verify-app.js can run on
-  diagnostics/                   standalone clipboard and search experiments
 ```
 
-## Current checks
-
-These run against the code in `src/` as it is now.
+## Checks
 
 | Script | Runs on | What it checks |
 | --- | --- | --- |
@@ -36,24 +33,3 @@ npm run screenshots               # rewrite docs/*.png
 `verify-app.js --shots=DIR` photographs **your real clipboard history** unless
 `--synthetic` is given. `out/` and `shots/` are git-ignored for that reason;
 keep those images out of the repository.
-
-## diagnostics/
-
-Standalone: they do not load anything from `src/`.
-
-| Script | What it does |
-| --- | --- |
-| `read_clipboard_formats.js` | Prints every type currently on the clipboard and its size, never the content |
-| `test_clipboard_files.js` | Experiments in reading the paths of files copied in Explorer — the starting point for capturing copied files |
-| `benchmark-search.js` | Times `LIKE` against FTS5 search on a throwaway database |
-
-```bash
-npx electron test/diagnostics/read_clipboard_formats.js
-```
-
-`better-sqlite3` is built for Electron's Node, so run the benchmark under
-Electron rather than plain Node:
-
-```bash
-ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron test/diagnostics/benchmark-search.js
-```

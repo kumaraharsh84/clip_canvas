@@ -1,9 +1,8 @@
 # Time Canvas (canvas-2D)
 
 Everything you have copied, on one zoomable calendar:
-**Year → Month → Day → Hour → Clip**, nested as boxes inside boxes the way a
-code-city visualiser nests directories and files. You don't navigate into a
-level, you fly into it.
+**Year → Month → Day → Hour → Clip**, nested as boxes inside boxes. You don't
+navigate into a level, you fly into it.
 
 - Years, months and days are a **fixed calendar**: a day's place comes from its
   date alone, so nothing ever moves when you copy something new.
@@ -36,9 +35,8 @@ level, you fly into it.
 
 ## A calendar that never moves
 
-The first version laid out the whole history as one treemap, so every copy
-moved everything — measured on 5,000 clips, one new clip shifted all 5,000,
-some by 35 card widths. Now:
+Laying the whole history out as one treemap would make every copy move
+every card. Instead:
 
 - **Years** sit side by side, anchored at `(year − 2000)`, so a year's position
   does not depend on which other years exist.
@@ -67,8 +65,8 @@ tc.setClips(rows);     // or an in-memory array (the demo)
 
 **Box size is decoupled from text size.** A card's area grows with the square
 root of its length, clamped to 0.35–8× a typical card, and each card then picks
-its own font scale so its whole text fits (`fitCard`). The earlier rule — area
-equals text area — gave one 38k-character paste 8% of the canvas; now the
+its own font scale so its whole text fits (`fitCard`). If area equalled text
+area, one 38,000-character paste would take 8% of the canvas; this way the
 largest card is well under 1%.
 
 **Four detail levels per card.** A few pixels: a solid tile in the category
@@ -95,10 +93,8 @@ raised to fit the smallest text of any loaded day, so any clip can be zoomed to
 
 ## What kind of clip it is
 
-The type stored at capture time was unreliable. In real history, 81 of the 245
-clips stored as "code" were chats, prompts, plans and reports — and ~37 more
-were terminal sessions filed as Other code, JSON or SQL. `classify.js` decides
-in this order:
+A copied chat message, prompt or report can look like code, and a terminal
+session can look like JSON or SQL. `classify.js` decides in this order:
 
 1. **Terminal session → Shell** if it *starts* at a prompt or command, is
    command output shaped like a table, or ≥30% of its lines are prompts,
@@ -117,7 +113,7 @@ is stored and what is shown agree. `node test/verify-classify.js` checks both
 against synthetic examples of every case above.
 
 Known gap: nested YAML (`services:` → `web:` → `image: nginx`) is not recognised
-as config; it shows as Other code, as it always did.
+as config; it shows as Other code.
 
 ## Controls
 

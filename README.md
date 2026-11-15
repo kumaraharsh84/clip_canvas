@@ -137,9 +137,6 @@ npm run build   # dist/ClipCanvas Setup <version>.exe
   Content-Security-Policy. The preload script exposes an allow-list of IPC
   channels, never `ipcRenderer` itself.
 
-The canvas's look is inspired by code-city visualisers that fly through a
-source tree, where every file is a box and every box is readable up close.
-
 ## Scripts
 
 | | |
@@ -190,8 +187,7 @@ src/
   assets/              logo.svg (+ logo-small.svg for 16-32 px) and the icons built from them
 demo/                  the canvas on its own, with synthetic clips (loads the app's bundle)
 tools/                 build-icons.js (`npm run icons`), record-gif.js (`npm run gif`)
-test/                  checks and diagnostics -- see its README
-planning/              product decisions, roadmap and feature status
+test/                  checks -- see its README
 docs/                  screenshots
 ```
 
@@ -321,8 +317,6 @@ the keys and press a different combination; ClipCanvas refuses Windows' basic
 shortcuts and warns about ones apps commonly use.
 
 ## Roadmap
-
-From [`planning/`](planning/):
 
 - Grouped view for busy hours: folders by kind inside an hour
 - Cleanup by hour, day, month and year, with starred and pinned clips protected
