@@ -20,7 +20,7 @@
     "type": "git",
     "url": "https://github.com/kumaraharsh84/clip_canvas.git"
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "author": "kumar",
   "main": "src/main/main.js",
   "scripts": {

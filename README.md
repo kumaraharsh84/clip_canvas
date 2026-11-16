@@ -323,3 +323,7 @@ shortcuts and warns about ones apps commonly use.
 - A small always-available capsule near the taskbar, with copy feedback
 - Search by date and kind: `today`, `last week`, `images june 2026`
 - File and PDF clips
+
+## License
+
+[MIT](LICENSE)

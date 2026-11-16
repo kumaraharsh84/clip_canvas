@@ -11,6 +11,7 @@ All notable changes to ClipCanvas. The format follows
 - A 512 px thumbnail is saved with every captured image and used by the
   zoomed-out canvas. Images captured earlier get theirs in the background.
 - `npm run verify:app` runs on a fresh clone, against synthetic clips.
+- An MIT license.
 
 ### Changed
 
